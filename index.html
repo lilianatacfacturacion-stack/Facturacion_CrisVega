@@ -1,0 +1,2113 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>#ncluOpos · Facturación</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* ======= RESET & BASE ======= */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --navy:       #2b2620;   /* tinta */
+  --navy-mid:   #8b6a2f;   /* bronce */
+  --navy-light: #a8844d;
+  --accent:     #8b6a2f;
+  --accent-hover:#6b5222;
+  --gold:       #c4a06a;
+  --bg:         #f4efe4;   /* crudo */
+  --surface:    #fffdf8;
+  --border:     #e0d6c3;
+  --text:       #2b2620;
+  --text-muted: #7a7064;
+  --green:      #4f6f3a;
+  --green-bg:   #e5eedc;
+  --red:        #a3402f;
+  --red-bg:     #f5e0db;
+  --orange:     #8a6414;
+  --orange-bg:  #f5ebd0;
+  --serif:      Georgia, 'Times New Roman', serif;
+  --sidebar-w:  220px;
+  --header-h:   56px;
+}
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+input, select, textarea, button { font-family: inherit; font-size: 0.875rem; }
+
+/* ======= OVERLAY PIN ======= */
+#pinOverlay, #setupOverlay {
+  position: fixed; inset: 0; background: rgba(43,38,32,0.88);
+  display: none; align-items: center; justify-content: center; z-index: 9000;
+}
+.overlay-card {
+  background: var(--surface); border-radius: 16px; padding: 40px;
+  width: 360px; max-width: 95vw; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+}
+.overlay-card .logo-txt {
+  font-size: 1.5rem; font-weight: 800; color: var(--navy); letter-spacing: -0.5px; margin-bottom: 6px;
+}
+.overlay-card .subtit { color: var(--text-muted); font-size: 0.85rem; margin-bottom: 28px; }
+.pin-input-wrap { position: relative; margin-bottom: 16px; }
+.pin-input-wrap input {
+  width: 100%; padding: 14px 16px; border: 2px solid var(--border);
+  border-radius: 10px; font-size: 1.1rem; letter-spacing: 4px; text-align: center;
+  transition: border-color .2s;
+}
+.pin-input-wrap input:focus { outline: none; border-color: var(--accent); }
+.pin-err { color: var(--red); font-size: 0.82rem; min-height: 18px; }
+
+/* ======= LAYOUT SHELL ======= */
+#appShell { display: flex; min-height: 100vh; }
+
+/* ---- CABECERA + MENÚ ---- */
+#appShell { flex-direction: column; }
+#appHeader { background: var(--surface); border-bottom: 1px solid var(--border); padding: 14px 24px 14px; }
+.hdr-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+#hdrLogo { height: 54px; width: auto; border-radius: 8px; box-shadow: 0 1px 4px rgba(43,38,32,.2); }
+.hdr-title { font-family: var(--serif); font-size: 1.35rem; font-weight: 700; }
+.hdr-sub { font-size: 0.8rem; color: var(--text-muted); }
+.ult-chip { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 8px 12px; }
+.ult-chip .uf-label { color: var(--text-muted); text-transform: uppercase; font-size: 0.68rem; letter-spacing: .6px; }
+.ult-chip .uf-num { font-weight: 700; }
+.ult-chip .uf-info { color: var(--text-muted); }
+.uf-estado { font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+.uf-estado.cobrada { background: var(--green-bg); color: var(--green); }
+.uf-estado.pendiente { background: var(--orange-bg); color: var(--orange); }
+
+#mainNav { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin-top: 12px; }
+.tab { display: flex; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 12px; padding: 13px 8px; cursor: pointer; font-size: 0.95rem; font-weight: 500; user-select: none; box-shadow: 0 1px 2px rgba(60,45,20,.06); transition: all .15s; }
+.tab:hover { border-color: var(--accent); color: var(--accent); }
+.tab.activo { background: var(--accent); color: #fffdf8; border-color: var(--accent); }
+.tab .tab-shortcut { font-size: 0.65rem; background: rgba(0,0,0,.06); padding: 1px 5px; border-radius: 4px; color: var(--text-muted); }
+.tab.activo .tab-shortcut { background: rgba(255,255,255,.2); color: #fffdf8; }
+
+/* En Inicio: botones grandes, gris piedra, borde dorado */
+body.en-inicio #mainNav { grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 16px; }
+body.en-inicio .tab { flex-direction: column; gap: 8px; min-height: 160px; padding: 24px 6px; font-size: min(2.4rem, 3vw); font-weight: 600; letter-spacing: -0.5px; border-radius: 18px; background: #d6d3cd; border: 6px solid var(--gold); color: #2b2620; }
+body.en-inicio .tab .tab-icon { font-size: 2.4rem; }
+body.en-inicio .tab .tab-shortcut { font-size: 0.75rem; letter-spacing: 0; }
+body.en-inicio .tab:hover { background: #cac6bf; border-color: #a8844d; color: var(--accent); transform: translateY(-2px); }
+body.en-inicio .tab.activo { background: #d6d3cd; color: #2b2620; border-color: var(--gold); }
+body.en-inicio .tab.activo .tab-shortcut { background: rgba(0,0,0,.06); color: var(--text-muted); }
+@media (max-width: 700px) {
+  body.en-inicio #mainNav { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  body.en-inicio .tab { min-height: 110px; padding: 14px 4px; font-size: min(1.9rem, 6.4vw); }
+  .ult-chip { margin-left: 0; width: 100%; }
+}
+.dash-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 760px) { .dash-grid { grid-template-columns: 1fr; } }
+.dash-grid .panel { margin-bottom: 0; }
+.dash-grid h2 { font-size: 0.8rem !important; text-transform: uppercase; letter-spacing: .8px; font-family: inherit !important; }
+.dash-grid td, .dash-grid th { font-size: 0.78rem; padding: 7px 8px; }
+
+#mainWrap { flex: 1; display: flex; flex-direction: column; }
+
+/* ======= CONTENT ======= */
+#contentArea { flex: 1; padding: 24px; }
+.seccion { display: none; }
+.seccion.activo { display: block; }
+
+/* ======= CARDS / PANELS ======= */
+.panel {
+  background: var(--surface); border-radius: 12px; border: 1px solid var(--border);
+  box-shadow: 0 1px 4px rgba(0,0,0,.04); margin-bottom: 20px;
+}
+.panel-header {
+  padding: 16px 20px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.panel-header h2 { font-size: 1.05rem; font-weight: 700; color: var(--text); font-family: var(--serif); }
+.panel-body { padding: 20px; }
+
+/* ======= FORM GRID ======= */
+.fg { display: grid; gap: 12px; }
+.fg-2 { grid-template-columns: 1fr 1fr; }
+.fg-3 { grid-template-columns: 1fr 1fr 1fr; }
+.fg-4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 0.75rem; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px; }
+.field input, .field select, .field textarea {
+  padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; background: var(--surface);
+  color: var(--text); transition: border-color .15s, box-shadow .15s;
+}
+.field input:focus, .field select:focus, .field textarea:focus {
+  outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(139,106,47,.15);
+}
+.field input[readonly] { background: var(--bg); color: var(--text-muted); cursor: default; }
+.field-row { display: flex; gap: 8px; align-items: flex-end; }
+
+/* ======= BUTTONS ======= */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 9px 16px; border-radius: 8px; border: none; cursor: pointer;
+  font-size: 0.83rem; font-weight: 600; transition: background .15s, transform .1s, box-shadow .15s;
+  white-space: nowrap;
+}
+.btn:active { transform: scale(.97); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-primary:hover { background: var(--accent-hover); box-shadow: 0 2px 8px rgba(139,106,47,.35); }
+.btn-secondary { background: var(--bg); color: var(--text); border: 1.5px solid var(--border); }
+.btn-secondary:hover { background: var(--border); }
+.btn-danger { background: var(--red-bg); color: var(--red); border: 1.5px solid #fca5a5; }
+.btn-danger:hover { background: #fecaca; }
+.btn-green { background: var(--green-bg); color: var(--green); border: 1.5px solid #86efac; }
+.btn-green:hover { background: #bbf7d0; }
+.btn-sm { padding: 5px 10px; font-size: 0.78rem; border-radius: 6px; }
+.btn-xs { padding: 3px 8px; font-size: 0.72rem; border-radius: 5px; }
+
+/* ======= BADGES ======= */
+.badge {
+  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 20px;
+  font-size: 0.7rem; font-weight: 700; letter-spacing: .3px;
+}
+.badge-green { background: var(--green-bg); color: var(--green); }
+.badge-red { background: var(--red-bg); color: var(--red); }
+.badge-orange { background: var(--orange-bg); color: var(--orange); }
+.badge-blue { background: #e3e9f0; color: #34557a; }
+.badge-gray { background: #f1f5f9; color: #64748b; }
+
+/* estado cobro badge */
+.badge-cobrada { background: var(--green-bg); color: var(--green); cursor: pointer; }
+.badge-cobrada:hover { background: #bbf7d0; }
+.badge-pendiente { background: var(--orange-bg); color: var(--orange); cursor: pointer; }
+.badge-pendiente:hover { background: #fde68a; }
+
+/* ======= TABLE ======= */
+.tabla-wrap { overflow-x: auto; border-radius: 8px; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; min-width: 700px; }
+thead th {
+  background: var(--bg); padding: 10px 12px; text-align: left;
+  font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: .4px;
+  border-bottom: 1px solid var(--border);
+}
+tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+tbody tr:hover { background: #f8f3e8; }
+tbody tr:last-child { border-bottom: none; }
+tbody td { padding: 10px 12px; font-size: 0.84rem; vertical-align: middle; }
+tr.anulada { opacity: .55; text-decoration: line-through; }
+tr.rectificativa { background: #fffbeb; }
+tr.anulada td, tr.rectificativa td { font-style: italic; }
+
+/* ======= FILTROS ======= */
+.filtros-bar {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  padding: 14px 20px; border-bottom: 1px solid var(--border); background: #fafbfd;
+}
+.filtros-bar input[type=text], .filtros-bar select {
+  padding: 7px 11px; border: 1.5px solid var(--border); border-radius: 7px;
+  font-size: 0.82rem; background: var(--surface); color: var(--text);
+}
+.filtros-bar input[type=text]:focus, .filtros-bar select:focus {
+  outline: none; border-color: var(--accent);
+}
+
+/* ======= ALERTS ======= */
+.alerta {
+  padding: 12px 16px; border-radius: 8px; font-size: 0.84rem; font-weight: 500; margin-bottom: 12px;
+}
+.alerta-ok { background: var(--green-bg); color: var(--green); border: 1px solid #c4d6b5; }
+.alerta-error { background: var(--red-bg); color: var(--red); border: 1px solid #fca5a5; }
+.alerta-info { background: #efe8da; color: #5c4a28; border: 1px solid #e0d6c3; }
+.alerta-warn { background: var(--orange-bg); color: var(--orange); border: 1px solid #fcd34d; }
+
+/* toast flotante */
+.toast-container { position: fixed; bottom: 24px; right: 24px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+.toast {
+  padding: 12px 18px; border-radius: 10px; font-size: 0.84rem; font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,.18); animation: toastIn .25s ease;
+  max-width: 340px;
+}
+.toast-ok { background: #2b2620; color: #fffdf8; }
+.toast-error { background: var(--red); color: #fff; }
+@keyframes toastIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+
+/* ======= MODALES ======= */
+.modal-bg {
+  position: fixed; inset: 0; background: rgba(43,38,32,.5); display: none;
+  align-items: center; justify-content: center; z-index: 500; padding: 20px;
+}
+.modal-bg.abierto { display: flex; }
+.modal-card {
+  background: var(--surface); border-radius: 14px; width: 100%; max-width: 540px;
+  box-shadow: 0 20px 50px rgba(0,0,0,.25); overflow: hidden;
+}
+.modal-head {
+  background: var(--navy); color: #fff; padding: 16px 20px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.modal-head h3 { font-size: 0.95rem; font-weight: 700; }
+.modal-head .btn-close {
+  background: none; border: none; color: rgba(255,255,255,.6); cursor: pointer;
+  font-size: 1.1rem; padding: 4px 8px; border-radius: 6px; transition: background .15s;
+}
+.modal-head .btn-close:hover { background: rgba(255,255,255,.12); color: #fff; }
+.modal-body { padding: 20px; }
+.modal-foot {
+  padding: 14px 20px; border-top: 1px solid var(--border);
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.info-box {
+  background: var(--bg); border-radius: 8px; padding: 10px 14px;
+  font-size: 0.82rem; color: var(--text-muted); margin-top: 10px;
+}
+
+/* ======= CLIENTES ======= */
+.cliente-card {
+  display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+  border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px; background: var(--surface);
+  transition: box-shadow .15s;
+}
+.cliente-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,.07); }
+.cliente-avatar {
+  width: 38px; height: 38px; border-radius: 50%; background: var(--navy);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-weight: 700; font-size: 0.95rem; flex-shrink: 0;
+}
+.cliente-info { flex: 1; min-width: 0; }
+.cliente-nombre { font-weight: 600; font-size: 0.88rem; }
+.cliente-det { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+
+/* ======= LOTE ======= */
+.lote-tabla th, .lote-tabla td { font-size: 0.8rem; padding: 8px 10px; }
+.lote-tabla input[type=number], .lote-tabla input[type=text], .lote-tabla select {
+  width: 100%; padding: 5px 7px; border: 1px solid var(--border); border-radius: 5px;
+}
+
+/* ======= AJUSTES ======= */
+.cfg-section-title {
+  font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: .5px; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid var(--border);
+}
+
+/* ======= TAC ======= */
+.tac-card {
+  border: 2px solid var(--navy-mid); border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  background: var(--surface);
+}
+
+/* ======= RESPONSIVE ======= */
+@media (max-width: 768px) {
+  :root { --sidebar-w: 0px; }
+  #sidebar { transform: translateX(-220px); }
+  #sidebar.abierto { transform: translateX(0); width: 220px; }
+  #mainWrap { margin-left: 0; }
+  #menuBtn { display: flex !important; }
+  .fg-4 { grid-template-columns: 1fr 1fr; }
+  .fg-3 { grid-template-columns: 1fr 1fr; }
+}
+#menuBtn {
+  display: none; background: none; border: none; cursor: pointer;
+  color: var(--text); font-size: 1.3rem; padding: 4px 8px;
+}
+
+/* extra para bloque cliente manual */
+#bloqueClienteManual { display: none; }
+#bloqueClienteManual.visible { display: grid; }
+
+/* resumen impuestos */
+#resumenImpuestos { font-size: 0.8rem; color: var(--text-muted); min-height: 18px; margin-top: 2px; }
+
+/* total grande */
+.total-grande {
+  font-size: 1.3rem; font-weight: 800; color: var(--navy);
+}
+</style>
+</head>
+<body>
+
+<!-- ============ OVERLAY PIN ============ -->
+<div id="pinOverlay">
+  <div class="overlay-card">
+    <div class="logo-txt">#ncluOpos</div>
+    <div class="subtit">Facturación · Acceso seguro</div>
+    <div class="pin-input-wrap">
+      <input type="password" id="pin_input" placeholder="PIN" autocomplete="off"
+        onkeydown="if(event.key==='Enter') verificarPin()">
+    </div>
+    <div class="pin-err" id="pin_err"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="verificarPin()">Entrar →</button>
+  </div>
+</div>
+
+<!-- ============ OVERLAY SETUP ============ -->
+<div id="setupOverlay">
+  <div class="overlay-card" style="max-width:580px;text-align:left">
+    <div class="logo-txt" style="text-align:center;margin-bottom:4px">⚙️ Configuración inicial</div>
+    <div class="subtit" style="text-align:center">Introduce los datos de la empresa / autónomo</div>
+    <div class="fg fg-2" style="margin-bottom:12px">
+      <div class="field"><label>Nombre / Razón Social *</label><input id="s_nombre"></div>
+      <div class="field"><label>NIF / CIF *</label><input id="s_nif"></div>
+      <div class="field"><label>Dirección</label><input id="s_dir"></div>
+      <div class="field"><label>Email</label><input id="s_email"></div>
+      <div class="field"><label>Teléfono</label><input id="s_tel"></div>
+      <div class="field"><label>IBAN</label><input id="s_iban"></div>
+      <div class="field"><label>Formato nº factura</label>
+        <select id="s_formato">
+          <option value="NUM-YYYY">1-2024</option>
+          <option value="YYYY-NUM">2024-1</option>
+          <option value="YYYY/NUM">2024/1</option>
+          <option value="FYYYYNUM">F2024001</option>
+          <option value="NUM">1</option>
+        </select>
+      </div>
+      <div class="field"><label>Próximo número</label><input id="s_numini" type="number" value="1" min="1"></div>
+      <div class="field"><label>IVA por defecto (%)</label>
+        <select id="s_iva"><option value="0">0%</option><option value="4">4%</option><option value="10">10%</option><option value="21">21%</option></select>
+      </div>
+      <div class="field"><label>IRPF por defecto (%)</label>
+        <select id="s_irpf"><option value="0">0%</option><option value="7">7%</option><option value="15">15%</option><option value="19">19%</option></select>
+      </div>
+    </div>
+    <div class="field" style="margin-bottom:10px">
+      <label>Exención IVA (texto para PDF)</label>
+      <input id="s_exencion" value="Exención del IVA en actividades de enseñanza (art. 20.Uno.9º y 10º de la Ley 37/1992)">
+    </div>
+    <div class="field" style="margin-bottom:16px">
+      <label>Cláusula LOPD</label>
+      <textarea id="s_lopd" rows="2" style="resize:vertical"></textarea>
+    </div>
+    <div class="field" style="margin-bottom:16px">
+      <label>Logo (opcional)</label>
+      <input type="file" accept="image/*" onchange="previewLogo(this)">
+      <img id="logoPreview" style="max-height:60px;margin-top:6px;display:none;border-radius:6px">
+    </div>
+    <button class="btn btn-primary" style="width:100%" onclick="guardarConfig()">Guardar y comenzar →</button>
+  </div>
+</div>
+
+<!-- ============ TOAST CONTAINER ============ -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ============ APP SHELL ============ -->
+<div id="appShell" style="display:none">
+
+  <!-- CABECERA -->
+  <header id="appHeader">
+    <div class="hdr-top">
+      <img id="hdrLogo" alt="Logo" src="">
+      <div>
+        <div class="hdr-title">Facturación</div>
+        <div class="hdr-sub" id="hdrSub"></div>
+      </div>
+      <div class="ult-chip" id="ultimaFacWidget" title="Última factura emitida">
+        <span class="uf-label">Última factura</span>
+        <span class="uf-num" id="uf-num">—</span>
+        <span class="uf-info" id="uf-info">Sin facturas</span>
+        <span class="uf-estado pendiente" id="uf-estado" style="display:none"></span>
+      </div>
+    </div>
+    <nav id="mainNav">
+      <div class="tab" id="tab-inicio" onclick="irSec('inicio',this)"><span class="tab-icon">🏠</span><span>Inicio</span><span class="tab-shortcut">0</span></div>
+      <div class="tab" id="tab-facturas" onclick="irSec('facturas',this)"><span class="tab-icon">🧾</span><span>Facturas</span><span class="tab-shortcut">1</span></div>
+      <div class="tab" id="tab-clientes" onclick="irSec('clientes',this)"><span class="tab-icon">👥</span><span>Clientes</span><span class="tab-shortcut">2</span></div>
+      <div class="tab" id="tab-lote" onclick="irSec('lote',this)"><span class="tab-icon">📦</span><span>Lote</span><span class="tab-shortcut">3</span></div>
+      <div class="tab" id="tab-excel" onclick="irSec('excel',this)"><span class="tab-icon">📊</span><span>Excel</span><span class="tab-shortcut">4</span></div>
+      <div class="tab" id="tab-config" onclick="irSec('config',this)"><span class="tab-icon">⚙️</span><span>Ajustes</span><span class="tab-shortcut">5</span></div>
+      <div class="tab" id="tab-tac" onclick="irTAC()"><span class="tab-icon">🔑</span><span>TAC</span><span class="tab-shortcut">6</span></div>
+    </nav>
+  </header>
+
+  <!-- MAIN -->
+  <div id="mainWrap">
+    <!-- CONTENT -->
+    <div id="contentArea">
+
+      <!-- ===== INICIO ===== -->
+      <div class="seccion activo" id="sec-inicio">
+        <div class="dash-grid">
+          <div class="panel">
+            <div class="panel-header"><h2>Últimas 3 facturas</h2><button class="btn btn-secondary btn-xs" onclick="irSec('facturas')">Ver todas →</button></div>
+            <div class="tabla-wrap" style="border:none"><table style="min-width:0"><thead><tr><th>Nº</th><th>Cliente</th><th>Fecha</th><th style="text-align:right">Total</th><th></th></tr></thead><tbody id="dashUltimas"></tbody></table></div>
+          </div>
+          <div class="panel">
+            <div class="panel-header"><h2>Últimos 3 trimestres</h2></div>
+            <div class="tabla-wrap" style="border:none"><table style="min-width:0"><thead><tr><th>Trim.</th><th>Nº fact.</th><th>Base</th><th style="text-align:right">Total</th><th>Pendiente</th></tr></thead><tbody id="dashTrim"></tbody></table></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== FACTURAS ===== -->
+      <div class="seccion" id="sec-facturas">
+        <div class="panel" id="panelNueva" style="margin-bottom:20px;display:none">
+          <div class="panel-header">
+            <h2>Nueva factura</h2>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-secondary btn-sm" onclick="limpiarFormulario()">↺ Limpiar</button>
+              <button class="btn btn-secondary btn-sm" onclick="mostrarNueva(false)">✕ Cerrar</button>
+            </div>
+          </div>
+          <div class="panel-body">
+            <div class="fg fg-4" style="margin-bottom:12px">
+              <div class="field"><label>Nº Factura</label><input id="f_num" readonly></div>
+              <div class="field"><label>Fecha *</label><input type="date" id="f_fecha"></div>
+              <div class="field" style="grid-column:span 2">
+                <label>Cliente *</label>
+                <select id="f_cliente" onchange="rellenarCliente()">
+                  <option value="">— Selecciona cliente —</option>
+                  <option value="__nuevo__">+ Nuevo cliente sin guardar</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="fg fg-2" id="bloqueClienteManual">
+              <div class="field"><label>Nombre cliente</label><input id="f_cNombre" placeholder="Nombre completo"></div>
+              <div class="field"><label>NIF / DNI</label><input id="f_cNif"></div>
+              <div class="field"><label>Dirección</label><input id="f_cDir"></div>
+              <div class="field"><label>Email</label><input id="f_cEmail"></div>
+              <div class="field"><label>Teléfono</label><input id="f_cTel"></div>
+            </div>
+
+            <div class="fg" style="margin-top:0;margin-bottom:12px;grid-template-columns:3fr 1fr">
+              <div class="field"><label>Concepto *</label><input id="f_concepto" placeholder="Descripción del servicio"></div>
+              <div class="field"><label>Forma de cobro</label>
+                <select id="f_pago"><option>Efectivo</option><option>Transferencia</option><option>Domiciliación</option></select>
+              </div>
+            </div>
+
+            <div class="fg fg-4">
+              <div class="field"><label>Base imponible (€) *</label><input type="number" id="f_base" step="0.01" min="0" oninput="calcularTotales()"></div>
+              <div class="field"><label>IVA (%)</label>
+                <select id="f_iva" onchange="calcularTotales()">
+                  <option value="0">0% (Exento)</option><option value="4">4%</option>
+                  <option value="10">10%</option><option value="21">21%</option>
+                </select>
+              </div>
+              <div class="field"><label>Retención IRPF (%)</label>
+                <select id="f_irpf" onchange="calcularTotales()">
+                  <option value="0">0%</option><option value="7">7%</option>
+                  <option value="15">15%</option><option value="19">19%</option>
+                </select>
+              </div>
+              <div class="field">
+                <label>Total factura</label>
+                <input id="f_total" readonly class="total-grande" style="font-size:1.1rem;color:var(--navy);font-weight:800">
+              </div>
+            </div>
+            <div id="resumenImpuestos"></div>
+
+            <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
+              <button class="btn btn-primary" onclick="guardarFactura()">💾 Guardar factura</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lista facturas -->
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Facturas emitidas</h2>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-secondary btn-sm" onclick="openDomiciliaciones()">🏦 Domiciliaciones</button>
+              <button class="btn btn-primary" onclick="mostrarNueva(true)">➕ Nueva factura</button>
+            </div>
+          </div>
+          <div id="aviso-huecos" style="display:none;margin:12px 16px 0;padding:10px 14px;border-radius:10px;background:var(--orange-bg);color:var(--orange);border:1px solid #e6d3a3;font-size:0.85rem">
+            ⚠️ Hay saltos en la numeración: <span id="aviso-huecos-txt"></span>
+            <button class="btn btn-secondary btn-xs" style="margin-left:8px" onclick="corregirNumeracion()">🔢 Corregir numeración</button>
+          </div>
+          <div class="filtros-bar">
+            <input type="text" id="buscar" placeholder="🔍 Buscar..." oninput="renderTablaFacturas()" style="flex:1;min-width:140px">
+            <select id="filtroAnyo" onchange="renderTablaFacturas()"></select>
+            <select id="filtroMes" onchange="renderTablaFacturas()">
+              <option value="">Todos los meses</option>
+              <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+              <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+              <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+              <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+            <select id="filtroEstado" onchange="renderTablaFacturas()">
+              <option value="">Todos los estados</option>
+              <option value="pendiente">Pendiente cobro</option>
+              <option value="cobrada">Cobrada</option>
+            </select>
+          </div>
+          <div class="tabla-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nº Factura</th>
+                  <th>Fecha</th>
+                  <th>Cliente</th>
+                  <th>Concepto</th>
+                  <th>Base €</th>
+                  <th>Total €</th>
+                  <th>Cobro</th>
+                  <th>Estado cobro</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbodyFacturas"></tbody>
+            </table>
+          </div>
+          <div id="resumenTabla" style="padding:12px 16px;font-size:0.8rem;color:var(--text-muted);border-top:1px solid var(--border)"></div>
+        </div>
+      </div>
+
+      <!-- ===== CLIENTES ===== -->
+      <div class="seccion" id="sec-clientes">
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-header">
+            <h2>Nuevo cliente / Editar</h2>
+            <button class="btn btn-secondary btn-sm" onclick="limpiarCliente()">↺ Nuevo</button>
+          </div>
+          <div class="panel-body">
+            <input type="hidden" id="c_id">
+            <div class="fg fg-2" style="margin-bottom:12px">
+              <div class="field"><label>Nombre *</label><input id="c_nombre"></div>
+              <div class="field"><label>NIF / DNI *</label><input id="c_nif"></div>
+              <div class="field"><label>Dirección</label><input id="c_dir"></div>
+              <div class="field"><label>Email</label><input id="c_email"></div>
+              <div class="field"><label>Teléfono</label><input id="c_tel"></div>
+              <div class="field">
+                <label>En lote mensual</label>
+                <select id="c_lote">
+                  <option value="1">✅ Incluir en lote</option>
+                  <option value="0">— No incluir</option>
+                </select>
+              </div>
+            </div>
+            <div class="cfg-section-title">Valores por defecto para factura</div>
+            <div class="fg fg-4">
+              <div class="field"><label>Concepto plantilla</label><input id="c_concepto" placeholder="FORMACIÓN. {MES} {YYYY}"></div>
+              <div class="field"><label>Importe base (€)</label><input type="number" id="c_importe" step="0.01"></div>
+              <div class="field"><label>IVA (%)</label>
+                <select id="c_iva"><option value="0">0%</option><option value="4">4%</option><option value="10">10%</option><option value="21">21%</option></select>
+              </div>
+              <div class="field"><label>Retención IRPF (%)</label>
+                <select id="c_irpf"><option value="0">0%</option><option value="7">7%</option><option value="15">15%</option><option value="19">19%</option></select>
+              </div>
+            </div>
+            <div class="cfg-section-title" style="margin-top:16px">Cobro</div>
+            <div class="fg fg-4">
+              <div class="field"><label>Forma de cobro</label>
+                <select id="c_pago"><option>Efectivo</option><option>Transferencia</option><option>Domiciliación</option></select>
+              </div>
+              <div class="field"><label>IBAN del cliente</label><input id="c_iban" placeholder="ES00 0000 0000 0000 0000 0000"></div>
+              <div class="field"><label>Referencia mandato SEPA</label><input id="c_mandato" placeholder="Por defecto, su NIF"></div>
+              <div class="field"><label>Fecha firma mandato</label><input type="date" id="c_mandato_fecha"></div>
+            </div>
+            <div style="margin-top:16px">
+              <button class="btn btn-primary" onclick="guardarCliente()">💾 Guardar cliente</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Clientes guardados</h2>
+            <span id="contador-clientes" style="font-size:0.8rem;color:var(--text-muted)"></span>
+          </div>
+          <div class="panel-body" id="listaClientes" style="padding:16px"></div>
+        </div>
+      </div>
+
+      <!-- ===== LOTE ===== -->
+      <div class="seccion" id="sec-lote">
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-header"><h2>Configurar lote mensual</h2></div>
+          <div class="panel-body">
+            <div class="fg fg-4">
+              <div class="field"><label>Mes</label>
+                <select id="l_mes">
+                  <option value="01">Enero</option><option value="02">Febrero</option><option value="03">Marzo</option>
+                  <option value="04">Abril</option><option value="05">Mayo</option><option value="06">Junio</option>
+                  <option value="07">Julio</option><option value="08">Agosto</option><option value="09">Septiembre</option>
+                  <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+                </select>
+              </div>
+              <div class="field"><label>Año</label><input type="number" id="l_anyo" value="2024" min="2020" max="2099"></div>
+              <div class="field"><label>Fecha de emisión</label><input type="date" id="l_fecha"></div>
+              <div class="field" style="justify-content:flex-end">
+                <label>&nbsp;</label>
+                <button class="btn btn-secondary" onclick="cargarLote()">🔄 Actualizar vista</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="loteTablaWrap"></div>
+        <div id="loteAcciones" style="display:none;gap:10px;flex-wrap:wrap;margin-top:16px">
+          <button class="btn btn-primary" onclick="confirmarLote()">✅ Confirmar y generar facturas</button>
+          <button class="btn btn-secondary" onclick="openDomiciliaciones()">🏦 Excel domiciliaciones</button>
+        </div>
+      </div>
+
+      <!-- ===== EXCEL ===== -->
+      <div class="seccion" id="sec-excel">
+        <div class="panel">
+          <div class="panel-header"><h2>Exportar a Excel</h2></div>
+          <div class="panel-body">
+            <div class="fg fg-3" style="margin-bottom:16px">
+              <div class="field"><label>Año</label>
+                <select id="x_anyo"></select>
+              </div>
+              <div class="field"><label>Trimestre</label>
+                <select id="x_trim">
+                  <option value="">Todos</option>
+                  <option value="1">T1 (Ene–Mar)</option>
+                  <option value="2">T2 (Abr–Jun)</option>
+                  <option value="3">T3 (Jul–Sep)</option>
+                  <option value="4">T4 (Oct–Dic)</option>
+                </select>
+              </div>
+              <div class="field" style="justify-content:flex-end">
+                <label>&nbsp;</label>
+                <button class="btn btn-primary" onclick="exportarExcel()">⬇️ Descargar Excel</button>
+              </div>
+            </div>
+            <div id="resumenExport" class="alerta alerta-info"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== AJUSTES ===== -->
+      <div class="seccion" id="sec-config">
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-header"><h2>Datos de la empresa / autónomo</h2></div>
+          <div class="panel-body">
+            <div class="cfg-section-title">Identificación</div>
+            <div class="fg fg-2" style="margin-bottom:16px">
+              <div class="field"><label>Nombre / Razón Social</label><input id="cfg_nombre"></div>
+              <div class="field"><label>NIF / CIF</label><input id="cfg_nif"></div>
+              <div class="field"><label>Dirección</label><input id="cfg_dir"></div>
+              <div class="field"><label>Email</label><input id="cfg_email"></div>
+              <div class="field"><label>Teléfono</label><input id="cfg_tel"></div>
+              <div class="field"><label>IBAN</label><input id="cfg_iban"></div>
+            </div>
+            <div class="cfg-section-title">Numeración y fiscalidad</div>
+            <div class="fg fg-4" style="margin-bottom:16px">
+              <div class="field"><label>Formato nº factura</label>
+                <select id="cfg_formato" onchange="actualizarPreviewNum()">
+                  <option value="NUM-YYYY">1-2024</option><option value="YYYY-NUM">2024-1</option>
+                  <option value="YYYY/NUM">2024/1</option><option value="FYYYYNUM">F2024001</option>
+                  <option value="NUM">Solo número</option>
+                </select>
+              </div>
+              <div class="field"><label>Próximo número</label><input type="number" id="cfg_signum" min="1" oninput="actualizarPreviewNum()"></div>
+              <div class="field"><label>IVA por defecto</label>
+                <select id="cfg_iva"><option value="0">0%</option><option value="4">4%</option><option value="10">10%</option><option value="21">21%</option></select>
+              </div>
+              <div class="field"><label>IRPF por defecto</label>
+                <select id="cfg_irpf"><option value="0">0%</option><option value="7">7%</option><option value="15">15%</option><option value="19">19%</option></select>
+              </div>
+            </div>
+            <div class="alerta alerta-info" style="margin-bottom:16px">Vista previa número: <strong id="previewNum"></strong></div>
+            <div class="cfg-section-title">Logo</div>
+            <div class="field" style="margin-bottom:16px">
+              <input type="file" accept="image/*" onchange="previewLogoCfg(this)">
+              <img id="logoPreviewCfg" style="max-height:60px;margin-top:6px;display:none;border-radius:6px">
+            </div>
+            <div class="cfg-section-title">Textos legales</div>
+            <div class="fg" style="margin-bottom:16px">
+              <div class="field"><label>Exención IVA</label><input id="cfg_exencion"></div>
+              <div class="field"><label>Cláusula LOPD</label><textarea id="cfg_lopd" rows="3" style="resize:vertical"></textarea></div>
+            </div>
+            <button class="btn btn-primary" onclick="guardarConfigCfg()">💾 Guardar ajustes</button>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-bottom:20px">
+          <div class="panel-header"><h2>PIN de acceso</h2></div>
+          <div class="panel-body">
+            <div class="fg fg-2" style="max-width:400px">
+              <div class="field"><label>PIN actual</label><input type="password" id="pin_actual"></div>
+              <div class="field"><label>PIN nuevo (mín. 4 caracteres)</label><input type="password" id="pin_nuevo"></div>
+            </div>
+            <button class="btn btn-secondary" style="margin-top:12px" onclick="cambiarPin()">🔐 Cambiar PIN</button>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header"><h2>Copia de seguridad</h2></div>
+          <div class="panel-body">
+            <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+              <button class="btn btn-secondary" onclick="hacerCopiaSeguridad(false)">⬇️ Descargar backup</button>
+              <label class="btn btn-secondary" style="cursor:pointer">
+                📂 Restaurar backup <input type="file" accept=".json" style="display:none" onchange="restaurarCopia(event)">
+              </label>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-danger" onclick="borrarTodo()">🗑 Borrar todos los datos</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== TAC ===== -->
+      <div class="seccion" id="sec-tac">
+        <div id="tac-login-card" class="panel">
+          <div class="panel-header"><h2>🔑 Acceso TAC</h2></div>
+          <div class="panel-body" style="max-width:320px">
+            <div class="field" style="margin-bottom:12px">
+              <label>PIN TAC</label>
+              <input type="password" id="tac_pin_input" onkeydown="if(event.key==='Enter') verificarPinTAC()">
+            </div>
+            <button class="btn btn-primary" onclick="verificarPinTAC()">Entrar →</button>
+          </div>
+        </div>
+        <div id="tac-visor" style="display:none">
+          <div class="panel" style="margin-bottom:20px">
+            <div class="panel-header"><h2>Gestión PIN cliente</h2></div>
+            <div class="panel-body tac-card" style="border:none;background:none">
+              <div class="fg fg-2" style="max-width:420px;margin-bottom:10px">
+                <div class="field"><label>Nuevo PIN para Cristina</label><input type="text" id="tac_nuevo_pin_cliente" placeholder="Mín. 4 caracteres"></div>
+                <div class="field" style="justify-content:flex-end">
+                  <label>&nbsp;</label>
+                  <button class="btn btn-primary" onclick="tacCambiarPinCliente()">Cambiar PIN</button>
+                </div>
+              </div>
+              <div id="tac-pin-msg" style="font-size:0.82rem;min-height:20px"></div>
+              <button class="btn btn-danger" style="margin-top:12px" onclick="tacBloquearCliente()">🚫 Bloquear acceso</button>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h2>Copias de seguridad en la nube</h2>
+              <button class="btn btn-secondary btn-sm" onclick="cargarCopiasTAC()">🔄 Actualizar</button>
+            </div>
+            <div class="panel-body" id="tac-lista"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /contentArea -->
+  </div><!-- /mainWrap -->
+</div><!-- /appShell -->
+
+<!-- ============ MODAL DOMICILIACIONES ============ -->
+<div class="modal-bg" id="modalDomic">
+  <div class="modal-card" style="max-width:820px">
+    <div class="modal-head"><h3>Remesa de domiciliaciones</h3><button class="btn-close" onclick="document.getElementById('modalDomic').classList.remove('abierto')">✕</button></div>
+    <div class="modal-body">
+      <div class="fg fg-3">
+        <div class="field"><label>Facturas del mes</label><select id="dom_mes" onchange="renderDomiciliaciones()"></select></div>
+        <div class="field"><label>Fecha de cargo en cuenta</label><input type="date" id="dom_fecha"></div>
+        <div class="field" style="justify-content:flex-end;font-size:0.78rem;color:var(--text-muted)">Solo facturas pendientes con cobro por domiciliación.</div>
+      </div>
+      <div class="tabla-wrap" style="margin-top:12px"><table style="min-width:560px">
+        <thead><tr><th><input type="checkbox" checked onchange="document.querySelectorAll('.dom-chk').forEach(c=>c.checked=this.checked)"></th><th>Factura</th><th>Cliente</th><th>NIF</th><th>IBAN</th><th style="text-align:right">Importe</th></tr></thead>
+        <tbody id="dom_tabla"></tbody></table></div>
+      <div id="dom_aviso" style="font-size:0.8rem;color:var(--red);margin-top:8px"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('modalDomic').classList.remove('abierto')">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="exportarDomiciliaciones()">📥 Descargar Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL EDITAR FACTURA ============ -->
+<div class="modal-bg" id="modalFactura">
+  <div class="modal-card">
+    <div class="modal-head">
+      <h3 id="modalFacturaTitulo">Editar factura</h3>
+      <button class="btn-close" onclick="cerrarModalFactura()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="modal_fid">
+      <div class="fg fg-2" style="margin-bottom:12px">
+        <div class="field"><label>Fecha</label><input type="date" id="modal_fecha"></div>
+        <div class="field"><label>Cliente</label><input id="modal_cliente_nombre" readonly></div>
+      </div>
+      <div class="field" style="margin-bottom:12px">
+        <label>Concepto</label><input id="modal_concepto">
+      </div>
+      <div class="fg fg-3">
+        <div class="field"><label>Base imponible (€)</label><input type="number" id="modal_base" step="0.01" oninput="recalcModal()"></div>
+        <div class="field"><label>IVA (%)</label>
+          <select id="modal_iva" onchange="recalcModal()">
+            <option value="0">0%</option><option value="4">4%</option><option value="10">10%</option><option value="21">21%</option>
+          </select>
+        </div>
+        <div class="field"><label>Retención (%)</label>
+          <select id="modal_irpf" onchange="recalcModal()">
+            <option value="0">0%</option><option value="7">7%</option><option value="15">15%</option><option value="19">19%</option>
+          </select>
+        </div>
+      </div>
+      <div class="info-box" id="modal_total_info"></div>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-danger btn-sm" onclick="anularFactura()">🚫 Anular</button>
+      <button class="btn btn-secondary btn-sm" onclick="cerrarModalFactura()">Cancelar</button>
+      <button class="btn btn-primary btn-sm" onclick="guardarEdicionFactura()">💾 Guardar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ======= CONSTANTES =======
+const PIN_KEY = 'fac_pin';
+const PIN_DEFAULT = 'Cris_TAC';
+const PIN_OK_KEY = 'fac_pin_ok';
+const TAC_PIN_KEY = 'fac_tac_pin';
+const TAC_PIN_DEFAULT = '9999';
+const TAC_OK_KEY = 'fac_tac_ok';
+const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const SUPA_URL = 'https://pujxousfyvnuhwimqyor.supabase.co';
+const SUPA_KEY = 'sb_publishable_7AUjDhXKEpOlBJ4a34N4lw_wxJLzl2t';
+
+// Logo por defecto (TAC)
+const LOGO_DEFAULT = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjYwIiB2aWV3Qm94PSIwIDAgMjAwIDYwIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciPjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iNjAiIHJ4PSI4IiBmaWxsPSIjMGYyMzQwIi8+PHRleHQgeD0iMTAiIHk9IjM4IiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiIgZm9udC1zaXplPSIyMiIgZm9udC13ZWlnaHQ9IjgwMCIgZmlsbD0iI2ZmZiI+I25jbHVPcG9zPC90ZXh0Pjwvc3ZnPg==';
+
+// ======= ESTADO =======
+let cfg = null, clientes = [], facturas = [];
+
+// ======= STORAGE =======
+function cargar() {
+  try { cfg = JSON.parse(localStorage.getItem('fac_cfg')); } catch(e) { cfg = null; }
+  try { clientes = JSON.parse(localStorage.getItem('fac_clientes')) || []; } catch(e) { clientes = []; }
+  try { facturas = JSON.parse(localStorage.getItem('fac_facturas')) || []; } catch(e) { facturas = []; }
+}
+let _syncTimer = null;
+function guardar() {
+  localStorage.setItem('fac_cfg', JSON.stringify(cfg));
+  localStorage.setItem('fac_clientes', JSON.stringify(clientes));
+  localStorage.setItem('fac_facturas', JSON.stringify(facturas));
+  // Copia a la nube tras CUALQUIER cambio (estado, edición, clientes, ajustes...)
+  // Espera 4 s para agrupar varios cambios seguidos en una sola copia
+  clearTimeout(_syncTimer);
+  _syncTimer = setTimeout(() => hacerCopiaSeguridad(true), 4000);
+}
+
+// ======= TOAST =======
+function toast(msg, tipo='ok') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = `toast toast-${tipo}`;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity .3s'; setTimeout(()=>t.remove(), 300); }, 3200);
+}
+
+// ======= PIN =======
+function verificarPin() {
+  const inp = document.getElementById('pin_input').value.trim();
+  const pin = localStorage.getItem(PIN_KEY) || PIN_DEFAULT;
+  if (inp !== pin) {
+    document.getElementById('pin_err').textContent = 'PIN incorrecto';
+    document.getElementById('pin_input').value = '';
+    document.getElementById('pin_input').focus();
+    return;
+  }
+  sessionStorage.setItem(PIN_OK_KEY, '1');
+  document.getElementById('pinOverlay').style.display = 'none';
+  arrancarApp();
+}
+
+function cambiarPin() {
+  const actual = document.getElementById('pin_actual').value.trim();
+  const nuevo = document.getElementById('pin_nuevo').value.trim();
+  if (!actual || !nuevo) { toast('Introduce el PIN actual y el nuevo','error'); return; }
+  if (actual !== (localStorage.getItem(PIN_KEY) || PIN_DEFAULT)) {
+    toast('El PIN actual no es correcto','error');
+    document.getElementById('pin_actual').value = ''; return;
+  }
+  if (nuevo.length < 4) { toast('El nuevo PIN debe tener al menos 4 caracteres','error'); return; }
+  localStorage.setItem(PIN_KEY, nuevo);
+  document.getElementById('pin_actual').value = '';
+  document.getElementById('pin_nuevo').value = '';
+  toast('✅ PIN cambiado correctamente');
+}
+
+// ======= ARRANQUE =======
+function arrancarApp() {
+  cargar();
+  if (!cfg) {
+    precargarDatos(); cargar();
+    document.getElementById('setupOverlay').style.display = 'flex';
+    document.getElementById('s_nombre').value = cfg.nombre;
+    document.getElementById('s_nif').value = cfg.nif;
+    document.getElementById('s_dir').value = cfg.dir;
+    document.getElementById('s_email').value = cfg.email;
+    document.getElementById('s_tel').value = cfg.tel;
+    document.getElementById('s_iban').value = cfg.iban;
+    document.getElementById('s_formato').value = cfg.formato;
+    document.getElementById('s_numini').value = cfg.sigNum;
+    document.getElementById('s_iva').value = cfg.iva;
+    document.getElementById('s_irpf').value = cfg.irpf;
+    document.getElementById('s_exencion').value = cfg.exencion || '';
+    document.getElementById('s_lopd').value = cfg.lopd || '';
+    if (cfg.logo) {
+      const p = document.getElementById('logoPreview');
+      p.src = cfg.logo; p.style.display = 'block';
+    }
+    localStorage.removeItem('fac_cfg');
+  } else {
+    document.getElementById('setupOverlay').style.display = 'none';
+    document.getElementById('appShell').style.display = 'flex';
+    init();
+  }
+}
+
+function guardarConfig() {
+  const nombre = document.getElementById('s_nombre').value.trim();
+  const nif = document.getElementById('s_nif').value.trim();
+  if (!nombre || !nif) { alert('Nombre y NIF son obligatorios.'); return; }
+  cfg = {
+    nombre, nif,
+    dir: document.getElementById('s_dir').value.trim(),
+    email: document.getElementById('s_email').value.trim(),
+    tel: document.getElementById('s_tel').value.trim(),
+    iban: document.getElementById('s_iban').value.trim(),
+    formato: document.getElementById('s_formato').value,
+    sigNum: parseInt(document.getElementById('s_numini').value) || 1,
+    iva: document.getElementById('s_iva').value,
+    irpf: document.getElementById('s_irpf').value,
+    logo: document.getElementById('logoPreview').src || '',
+    exencion: document.getElementById('s_exencion').value,
+    lopd: document.getElementById('s_lopd').value,
+  };
+  guardar();
+  document.getElementById('setupOverlay').style.display = 'none';
+  document.getElementById('appShell').style.display = 'flex';
+  init();
+}
+
+// ======= NAVEGACIÓN =======
+const SECTION_NAMES = { inicio:'Inicio', facturas:'Facturas', clientes:'Clientes', lote:'Lote mensual', excel:'Export Excel', config:'Ajustes', tac:'TAC' };
+
+function irSec(sec, tabEl) {
+  document.querySelectorAll('.seccion').forEach(s => s.classList.remove('activo'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('activo'));
+  document.getElementById('sec-'+sec).classList.add('activo');
+  if (tabEl) tabEl.classList.add('activo');
+  else { const t = document.getElementById('tab-'+sec); if(t) t.classList.add('activo'); }
+  document.body.classList.toggle('en-inicio', sec === 'inicio');
+  if (sec === 'inicio') renderInicio();
+  if (sec === 'facturas') initFacturas();
+  if (sec === 'clientes') renderClientes();
+  if (sec === 'lote') initLote();
+  if (sec === 'excel') initExcel();
+  if (sec === 'config') cargarConfigCfg();
+  window.scrollTo(0,0);
+}
+
+function irTAC() {
+  document.querySelectorAll('.seccion').forEach(s => s.classList.remove('activo'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('activo'));
+  document.getElementById('sec-tac').classList.add('activo');
+  document.getElementById('tab-tac').classList.add('activo');
+  document.body.classList.remove('en-inicio');
+  const ok = sessionStorage.getItem(TAC_OK_KEY);
+  if (ok === '1') {
+    document.getElementById('tac-login-card').style.display = 'none';
+    document.getElementById('tac-visor').style.display = 'block';
+    cargarCopiasTAC();
+  } else {
+    document.getElementById('tac-login-card').style.display = 'block';
+    document.getElementById('tac-visor').style.display = 'none';
+    setTimeout(() => { const i = document.getElementById('tac_pin_input'); if(i) i.focus(); }, 100);
+  }
+}
+
+// ======= KEYBOARD SHORTCUTS =======
+document.addEventListener('keydown', e => {
+  // Ignorar si estamos escribiendo en un input/textarea/select
+  const tag = document.activeElement.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  // Ignorar si overlay abierto
+  if (document.getElementById('pinOverlay').style.display !== 'none') return;
+  if (document.getElementById('setupOverlay').style.display !== 'none') return;
+
+  if (e.key === '0') irSec('inicio');
+  else if (e.key === '1') irSec('facturas');
+  else if (e.key === '2') irSec('clientes');
+  else if (e.key === '3') irSec('lote');
+  else if (e.key === '4') irSec('excel');
+  else if (e.key === '5') irSec('config');
+  else if (e.key === '6') irTAC();
+  else if (e.key === 'Escape') {
+    cerrarModalFactura();
+    document.getElementById('modalDomic').classList.remove('abierto');
+  }
+  else if (e.key === 'n' || e.key === 'N') { irSec('facturas'); mostrarNueva(true); } // n = nueva factura
+});
+
+// ======= ÚLTIMA FACTURA WIDGET =======
+function actualizarUltimaFacWidget() {
+  if (!facturas || facturas.length === 0) {
+    document.getElementById('uf-num').textContent = '—';
+    document.getElementById('uf-info').textContent = 'Sin facturas';
+    document.getElementById('uf-estado').style.display = 'none';
+    return;
+  }
+  // la de número más alto
+  const ult = [...facturas].sort((a,b) => numDe(b) - numDe(a))[0];
+  document.getElementById('uf-num').textContent = ult.num;
+  const cli = ult.cliente ? ult.cliente.nombre : '—';
+  document.getElementById('uf-info').textContent = `${formatFecha(ult.fecha)} · ${cli} · ${ult.total.toFixed(2)} €`;
+  const estado = ult.estado || 'pendiente';
+  const el = document.getElementById('uf-estado');
+  el.style.display = 'inline-block';
+  if (estado === 'cobrada') {
+    el.className = 'uf-estado cobrada';
+    el.textContent = '✓ Cobrada';
+  } else {
+    el.className = 'uf-estado pendiente';
+    el.textContent = '⏳ Pendiente cobro';
+  }
+}
+
+// ======= INICIO =======
+function renderInicio() {
+  const ult = [...facturas].sort((a,b) => numDe(b) - numDe(a)).slice(0,3);
+  document.getElementById('dashUltimas').innerHTML = ult.map(f => `<tr>
+    <td style="white-space:nowrap"><strong>${f.num}</strong></td><td>${f.cliente.nombre}</td>
+    <td style="white-space:nowrap;color:var(--text-muted)">${formatFecha(f.fecha)}</td>
+    <td style="text-align:right;white-space:nowrap">${f.total.toFixed(2)} €</td>
+    <td><span class="badge ${f.estado==='cobrada'?'badge-green':'badge-orange'}">${f.estado==='cobrada'?'cobrada':'pendiente'}</span></td></tr>`).join('')
+    || '<tr><td colspan="5" style="text-align:center;color:var(--text-muted)">Sin facturas</td></tr>';
+  // últimos 3 trimestres terminados (o el actual si aún no hay)
+  const hoy = new Date(); let y = hoy.getFullYear(), q = Math.floor(hoy.getMonth()/3); const trims = [];
+  for (let k = 0; k < 3; k++) { q--; if (q < 0) { q = 3; y--; } trims.push({ y, q }); }
+  document.getElementById('dashTrim').innerHTML = trims.map(({y,q}) => {
+    const fs = facturas.filter(f => !f.anulada && f.fecha.startsWith(String(y)) && Math.floor((parseInt(f.fecha.slice(5,7))-1)/3) === q);
+    const base = fs.reduce((s,f)=>s+f.base,0), tot = fs.reduce((s,f)=>s+f.total,0);
+    const pend = fs.filter(f => f.estado !== 'cobrada' && !f.esRectificativa).reduce((s,f)=>s+f.total,0);
+    return `<tr><td><span class="badge badge-blue">${q+1}T ${y}</span></td><td>${fs.length}</td><td>${base.toFixed(2)} €</td>
+      <td style="text-align:right">${tot.toFixed(2)} €</td><td style="color:${pend>0?'var(--orange)':'var(--green)'}">${pend.toFixed(2)} €</td></tr>`;
+  }).join('');
+}
+
+// ======= DOMICILIACIONES =======
+function openDomiciliaciones() {
+  const fs = facturas.filter(f => normPago(f.pago) === 'Domiciliación' && f.estado !== 'cobrada' && !f.anulada && !f.esRectificativa);
+  const meses = [...new Set(fs.map(f => f.fecha.slice(0,7)))].sort().reverse();
+  const MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  document.getElementById('dom_mes').innerHTML = '<option value="">Todas las pendientes</option>' + meses.map(m => `<option value="${m}">${MES[parseInt(m.slice(5))-1]} ${m.slice(0,4)}</option>`).join('');
+  const d = new Date(); d.setDate(d.getDate() + 3);
+  document.getElementById('dom_fecha').value = d.toISOString().slice(0,10);
+  renderDomiciliaciones();
+  document.getElementById('modalDomic').classList.add('abierto');
+}
+function domFacturas() {
+  const mes = document.getElementById('dom_mes').value;
+  return facturas.filter(f => normPago(f.pago) === 'Domiciliación' && f.estado !== 'cobrada' && !f.anulada && !f.esRectificativa && (!mes || f.fecha.startsWith(mes)))
+    .sort((a,b) => numDe(a) - numDe(b));
+}
+function renderDomiciliaciones() {
+  let sinIban = 0;
+  document.getElementById('dom_tabla').innerHTML = domFacturas().map(f => {
+    const c = clientes.find(x => x.id === f.clienteId) || {};
+    if (!c.iban) sinIban++;
+    return `<tr><td><input type="checkbox" class="dom-chk" value="${f.id}" ${c.iban?'checked':''}></td><td>${f.num}</td><td>${f.cliente.nombre}</td><td>${f.cliente.nif||''}</td>
+      <td style="font-size:0.78rem">${c.iban ? c.iban.replace(/(.{4})/g,'$1 ').trim() : '<span style="color:var(--red)">Falta IBAN</span>'}</td><td style="text-align:right">${f.total.toFixed(2)} €</td></tr>`;
+  }).join('') || '<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:16px">No hay facturas pendientes domiciliadas</td></tr>';
+  document.getElementById('dom_aviso').textContent = sinIban ? `⚠️ ${sinIban} cliente(s) sin IBAN: añádelo en Clientes → ✏️ para poder domiciliarles.` : '';
+}
+function exportarDomiciliaciones() {
+  const ids = [...document.querySelectorAll('.dom-chk:checked')].map(c => c.value);
+  if (!ids.length) { toast('No hay facturas seleccionadas','error'); return; }
+  const fechaCargo = document.getElementById('dom_fecha').value;
+  const filas = ids.map(id => facturas.find(f => f.id === id)).map(f => {
+    const c = clientes.find(x => x.id === f.clienteId) || {};
+    return {
+      'Referencia adeudo': f.num, 'Nombre deudor': f.cliente.nombre, 'NIF deudor': f.cliente.nif || c.nif || '',
+      'IBAN deudor': c.iban || '', 'Importe': Math.round(f.total*100)/100,
+      'Concepto': `Factura ${f.num} - ${f.concepto}`.slice(0,140),
+      'Referencia mandato': c.mandato_ref || c.nif || '', 'Fecha firma mandato': c.mandato_fecha ? formatFecha(c.mandato_fecha) : '',
+      'Fecha de cargo': formatFecha(fechaCargo), 'Fecha factura': formatFecha(f.fecha)
+    };
+  });
+  const ws = XLSX.utils.json_to_sheet(filas);
+  ws['!cols'] = [14,32,12,28,10,50,18,14,12,12].map(w => ({ wch: w }));
+  const total = filas.reduce((s,r) => s + r['Importe'], 0);
+  XLSX.utils.sheet_add_aoa(ws, [[], ['TOTAL REMESA','','','', Math.round(total*100)/100], ['Nº adeudos', filas.length], ['Acreedor', cfg.nombre], ['NIF acreedor', cfg.nif], ['ID acreedor SEPA', idAcreedorSEPA(cfg.nif)], ['IBAN abono', cfg.iban]], { origin: -1 });
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Domiciliaciones');
+  XLSX.writeFile(wb, `domiciliaciones_${fechaCargo}.xlsx`);
+  toast(`📥 Excel con ${filas.length} adeudos · ${total.toFixed(2)} €`);
+}
+
+// ======= NUMERACIÓN =======
+function formatearNum(num, formato, anyo) {
+  const y = anyo || new Date().getFullYear();
+  const n3 = String(num).padStart(3, '0');
+  switch(formato) {
+    case 'NUM-YYYY': return `${num}-${y}`;
+    case 'YYYY-NUM': return `${y}-${num}`;
+    case 'YYYY/NUM': return `${y}/${num}`;
+    case 'FYYYYNUM': return `F${y}${n3}`;
+    case 'NUM': return String(num);
+    default: return `${num}-${y}`;
+  }
+}
+// Número entero de una factura (numInt, o sacado del texto según el formato)
+function numDe(f) {
+  if (f.numInt) return f.numInt;
+  const t = String(f.num||'');
+  const m = (cfg && (cfg.formato==='YYYY-NUM' || cfg.formato==='YYYY/NUM')) ? t.match(/\d{4}[-\/](\d+)/) : cfg && cfg.formato==='FYYYYNUM' ? t.match(/F\d{4}(\d+)/) : t.match(/^(\d+)/);
+  return m ? parseInt(m[1]) : 0;
+}
+// El siguiente número sale de la factura más alta que existe: si borras las últimas, se reutilizan sus números
+function siguienteNumInt() {
+  return facturas.length ? Math.max(...facturas.map(numDe)) + 1 : (cfg.sigNum || 1);
+}
+function siguienteNumero() {
+  cfg.sigNum = siguienteNumInt();
+  return formatearNum(cfg.sigNum, cfg.formato, new Date().getFullYear());
+}
+function huecosNumeracion() {
+  const nums = facturas.map(numDe).filter(n => n > 0).sort((a,b)=>a-b);
+  if (!nums.length) return [];
+  const set = new Set(nums), h = [];
+  for (let n = nums[0]; n <= nums[nums.length-1]; n++) if (!set.has(n)) h.push(n);
+  return h;
+}
+function corregirNumeracion() {
+  const huecos = huecosNumeracion();
+  if (!huecos.length) { toast('La numeración es correlativa ✓'); return; }
+  const desde = huecos[0];
+  const mover = facturas.filter(f => numDe(f) > desde).sort((a,b) => numDe(a) - numDe(b));
+  const bloqueadas = mover.filter(f => f.estado === 'cobrada');
+  if (bloqueadas.length) { alert('No se puede renumerar: hay facturas posteriores al hueco ya cobradas (' + bloqueadas.map(f=>f.num).join(', ') + ').\nRevísalo a mano.'); return; }
+  let n = desde; const cambios = [];
+  mover.forEach(f => { const nuevo = formatearNum(n, cfg.formato, parseInt(f.fecha.slice(0,4))); if (nuevo !== f.num) cambios.push([f, nuevo, n]); n++; });
+  if (!confirm('Faltan números en la numeración.\n\nSe renumerarán ' + cambios.length + ' facturas pendientes:\n\n' + cambios.map(([f,nv]) => `${f.num} → ${nv}  (${f.cliente.nombre})`).join('\n') + '\n\nHazlo solo si aún NO las has enviado. ¿Continuar?')) return;
+  cambios.forEach(([f,nv,ni]) => { f.num = nv; f.numInt = ni; });
+  cfg.sigNum = siguienteNumInt();
+  guardar(); renderTablaFacturas(); actualizarUltimaFacWidget(); toast('Numeración corregida ✓');
+}
+function mostrarNueva(si) {
+  document.getElementById('panelNueva').style.display = si ? 'block' : 'none';
+  if (si) { limpiarFormulario(); window.scrollTo(0,0); setTimeout(()=>document.getElementById('f_cliente').focus(),50); }
+}
+// Forma de cobro
+// Por defecto (sin dato) el cobro es en efectivo
+function normPago(p) { p = (p||'').toLowerCase(); if (!p) return 'Efectivo'; return p.startsWith('domic') || p.includes('recibo') ? 'Domiciliación' : (p.includes('efectivo') || p.includes('contado')) ? 'Efectivo' : 'Transferencia'; }
+function pagoBadge(p) { const n = normPago(p);
+  return n === 'Domiciliación' ? '<span class="badge badge-blue">🏦 Domiciliada</span>' : n === 'Efectivo' ? '<span class="badge badge-orange">💶 Efectivo</span>' : '<span class="badge badge-green">↗️ Transferencia</span>'; }
+function ibanValido(iban) {
+  const t = iban.replace(/\s+/g,'').toUpperCase();
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(t)) return false;
+  const r = (t.slice(4) + t.slice(0,4)).replace(/[A-Z]/g, ch => ch.charCodeAt(0) - 55);
+  let m = 0; for (const d of r) m = (m*10 + +d) % 97;
+  return m === 1;
+}
+function idAcreedorSEPA(nif) {
+  const n = (nif||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const r = (n + 'ES00').replace(/[A-Z]/g, ch => ch.charCodeAt(0) - 55);
+  let m = 0; for (const d of r) m = (m*10 + +d) % 97;
+  return 'ES' + String(98 - m).padStart(2,'0') + 'ZZZ' + n;
+}
+
+// ======= FACTURAS =======
+function initFacturas() {
+  document.getElementById('f_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f_num').value = siguienteNumero();
+  document.getElementById('f_iva').value = cfg.iva || '0';
+  document.getElementById('f_irpf').value = cfg.irpf || '0';
+  calcularTotales();
+  poblarSelectClientes();
+  renderTablaFacturas();
+  poblarFiltroAnyo();
+  actualizarUltimaFacWidget();
+}
+
+function poblarSelectClientes() {
+  const sel = document.getElementById('f_cliente');
+  sel.innerHTML = '<option value="">— Selecciona cliente —</option><option value="__nuevo__">+ Nuevo cliente sin guardar</option>';
+  clientes.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id; o.textContent = `${c.nombre} — ${c.nif}`;
+    sel.appendChild(o);
+  });
+}
+
+function rellenarCliente() {
+  const val = document.getElementById('f_cliente').value;
+  const bloque = document.getElementById('bloqueClienteManual');
+  if (val === '__nuevo__') {
+    bloque.classList.add('visible');
+    ['f_cNombre','f_cNif','f_cDir','f_cEmail','f_cTel'].forEach(id => document.getElementById(id).value = '');
+  } else {
+    bloque.classList.remove('visible');
+    const c = clientes.find(x => x.id === val);
+    if (c) {
+      if (c.concepto) document.getElementById('f_concepto').value = expandirConcepto(c.concepto);
+      if (c.importe) document.getElementById('f_base').value = c.importe;
+      if (c.iva !== undefined) document.getElementById('f_iva').value = c.iva;
+      if (c.irpf !== undefined) document.getElementById('f_irpf').value = c.irpf;
+      document.getElementById('f_pago').value = normPago(c.pago);
+      calcularTotales();
+    }
+  }
+}
+
+function expandirConcepto(tpl) {
+  const hoy = new Date();
+  return tpl
+    .replace('{MES}', MESES[hoy.getMonth()])
+    .replace('{YYYY}', hoy.getFullYear())
+    .replace('{MM}', String(hoy.getMonth()+1).padStart(2,'0'));
+}
+
+function calcularTotales() {
+  const base = parseFloat(document.getElementById('f_base').value) || 0;
+  const pIva = parseFloat(document.getElementById('f_iva').value) || 0;
+  const pIrpf = parseFloat(document.getElementById('f_irpf').value) || 0;
+  const cuotaIva = base * pIva / 100;
+  const retIrpf = base * pIrpf / 100;
+  const total = base + cuotaIva - retIrpf;
+  document.getElementById('f_total').value = total.toFixed(2) + ' €';
+  let html = '';
+  if (pIva > 0) html += `Base: ${base.toFixed(2)} € + IVA ${pIva}%: ${cuotaIva.toFixed(2)} €`;
+  if (pIrpf > 0) html += ` − Retención ${pIrpf}%: ${retIrpf.toFixed(2)} €`;
+  document.getElementById('resumenImpuestos').textContent = html;
+}
+
+function guardarFactura() {
+  const numStr = document.getElementById('f_num').value;
+  const fecha = document.getElementById('f_fecha').value;
+  const clienteId = document.getElementById('f_cliente').value;
+  const concepto = document.getElementById('f_concepto').value.trim();
+  const base = parseFloat(document.getElementById('f_base').value);
+  if (!fecha) { toast('La fecha es obligatoria','error'); return; }
+  if (!clienteId) { toast('Selecciona o introduce un cliente','error'); return; }
+  if (!concepto) { toast('El concepto es obligatorio','error'); return; }
+  if (isNaN(base) || base <= 0) { toast('La base imponible debe ser mayor que 0','error'); return; }
+  if (facturas.some(f => f.num === numStr)) {
+    toast(`Ya existe la factura ${numStr}`,'error'); return;
+  }
+  if (facturas.length > 0) {
+    const ultFecha = facturas[facturas.length-1].fecha;
+    if (fecha < ultFecha) {
+      if (!confirm(`⚠️ La fecha ${formatFecha(fecha)} es anterior a la última factura (${formatFecha(ultFecha)}). ¿Continuar?`)) return;
+    }
+  }
+  let clienteData;
+  if (clienteId === '__nuevo__') {
+    clienteData = {
+      nombre: document.getElementById('f_cNombre').value.trim(),
+      nif: document.getElementById('f_cNif').value.trim(),
+      dir: document.getElementById('f_cDir').value.trim(),
+      email: document.getElementById('f_cEmail').value.trim(),
+      tel: document.getElementById('f_cTel').value.trim(),
+    };
+    if (!clienteData.nombre) { toast('Introduce el nombre del cliente','error'); return; }
+  } else {
+    const c = clientes.find(x => x.id === clienteId);
+    clienteData = { nombre: c.nombre, nif: c.nif, dir: c.dir, email: c.email, tel: c.tel };
+  }
+  const numInt = siguienteNumInt();
+  const pIva = parseFloat(document.getElementById('f_iva').value) || 0;
+  const pIrpf = parseFloat(document.getElementById('f_irpf').value) || 0;
+  const cuotaIva = +(base * pIva / 100).toFixed(2);
+  const retIrpf = +(base * pIrpf / 100).toFixed(2);
+  const total = +(base + cuotaIva - retIrpf).toFixed(2);
+  const fac = {
+    id: Date.now().toString(), num: formatearNum(numInt, cfg.formato, parseInt(fecha.slice(0,4))), numInt, fecha,
+    clienteId, cliente: clienteData, concepto,
+    base: +base.toFixed(2), pIva, cuotaIva, pIrpf, retIrpf, total,
+    pago: document.getElementById('f_pago').value,
+    estado: 'pendiente',
+    creadaEn: new Date().toISOString(),
+  };
+  facturas.push(fac);
+  cfg.sigNum = siguienteNumInt();
+  guardar();
+  mostrarNueva(false);
+  initFacturas();
+  toast(`✅ Factura ${fac.num} guardada`);
+}
+
+function limpiarFormulario() {
+  document.getElementById('f_cliente').value = '';
+  document.getElementById('f_concepto').value = '';
+  document.getElementById('f_base').value = '';
+  document.getElementById('f_total').value = '';
+  document.getElementById('resumenImpuestos').textContent = '';
+  document.getElementById('bloqueClienteManual').classList.remove('visible');
+  document.getElementById('f_num').value = siguienteNumero();
+  document.getElementById('f_fecha').value = new Date().toISOString().split('T')[0];
+  document.getElementById('f_iva').value = cfg.iva || '0';
+  document.getElementById('f_irpf').value = cfg.irpf || '0';
+  document.getElementById('f_pago').value = 'Efectivo';
+}
+
+// ======= TOGGLE ESTADO COBRO =======
+function toggleEstado(id) {
+  const idx = facturas.findIndex(f => f.id === id);
+  if (idx === -1) return;
+  const actual = facturas[idx].estado || 'pendiente';
+  facturas[idx].estado = actual === 'cobrada' ? 'pendiente' : 'cobrada';
+  guardar();
+  renderTablaFacturas();
+  actualizarUltimaFacWidget();
+  toast(facturas[idx].estado === 'cobrada' ? '✅ Marcada como cobrada' : '⏳ Marcada como pendiente');
+}
+
+function renderTablaFacturas() {
+  const buscar = (document.getElementById('buscar').value || '').toLowerCase();
+  const anyo = document.getElementById('filtroAnyo').value;
+  const mes = document.getElementById('filtroMes').value;
+  const filtroEst = document.getElementById('filtroEstado').value;
+  const hu = huecosNumeracion(), av = document.getElementById('aviso-huecos');
+  if (av) { av.style.display = hu.length ? 'block' : 'none';
+    document.getElementById('aviso-huecos-txt').textContent = hu.length > 6 ? `faltan ${hu.length} números (del ${hu[0]} al ${hu[hu.length-1]})` : 'faltan los números ' + hu.join(', '); }
+  let lista = [...facturas].sort((a,b) => numDe(b) - numDe(a));
+  if (anyo) lista = lista.filter(f => f.fecha.startsWith(anyo));
+  if (mes) lista = lista.filter(f => f.fecha.substring(5,7) === mes);
+  if (filtroEst) lista = lista.filter(f => (f.estado || 'pendiente') === filtroEst);
+  if (buscar) lista = lista.filter(f =>
+    f.num.toLowerCase().includes(buscar) ||
+    f.cliente.nombre.toLowerCase().includes(buscar) ||
+    f.concepto.toLowerCase().includes(buscar)
+  );
+  const tbody = document.getElementById('tbodyFacturas');
+  if (lista.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#aaa;padding:24px">Sin facturas</td></tr>';
+    document.getElementById('resumenTabla').textContent = '';
+    return;
+  }
+
+  tbody.innerHTML = lista.map(f => {
+    const estado = f.estado || 'pendiente';
+    const estadoBadge = estado === 'cobrada'
+      ? `<span class="badge badge-cobrada" onclick="toggleEstado('${f.id}')" title="Clic para cambiar">✓ Cobrada</span>`
+      : `<span class="badge badge-pendiente" onclick="toggleEstado('${f.id}')" title="Clic para cambiar">⏳ Pendiente</span>`;
+
+    let numCell = `<strong>${f.num}</strong>`;
+    if (f.anulada) numCell += ' <span class="badge badge-red">ANULADA</span>';
+    else if (f.esRectificativa) numCell += ' <span class="badge badge-orange">RECTIF.</span>';
+
+    return `<tr class="${f.anulada ? 'anulada' : f.esRectificativa ? 'rectificativa' : ''}">
+      <td>${numCell}</td>
+      <td style="white-space:nowrap">${formatFecha(f.fecha)}</td>
+      <td>
+        <div style="font-weight:600;font-size:0.83rem">${f.cliente.nombre}</div>
+        <div style="font-size:0.72rem;color:var(--text-muted)">${f.cliente.nif}</div>
+      </td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${f.concepto}">${f.concepto}</td>
+      <td style="text-align:right">${f.base.toFixed(2)} €</td>
+      <td style="text-align:right"><strong>${f.total.toFixed(2)} €</strong></td>
+      <td>${pagoBadge(f.pago)}</td>
+      <td>${estadoBadge}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-xs" onclick="generarPDF('${f.id}')">🖨 PDF</button>
+        ${!f.anulada && !f.esRectificativa ? `<button class="btn btn-secondary btn-xs" style="background:var(--orange-bg);border-color:#e6d3a3;color:var(--orange)" onclick="abrirModalFactura('${f.id}')">✏️</button>` : ''}
+        <button class="btn btn-danger btn-xs" onclick="eliminarFactura('${f.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  // resumen pie
+  const totalBase = lista.reduce((s,f)=>s+f.base,0);
+  const totalFac = lista.reduce((s,f)=>s+f.total,0);
+  const nCobradas = lista.filter(f=>f.estado==='cobrada').length;
+  const nPendientes = lista.filter(f=>!f.anulada && !f.esRectificativa && f.estado!=='cobrada').length;
+  document.getElementById('resumenTabla').innerHTML =
+    `<strong>${lista.length}</strong> facturas · Base: <strong>${totalBase.toFixed(2)} €</strong> · Total: <strong>${totalFac.toFixed(2)} €</strong> &nbsp;|&nbsp; ✓ Cobradas: <strong style="color:var(--green)">${nCobradas}</strong> · ⏳ Pendientes: <strong style="color:var(--orange)">${nPendientes}</strong>`;
+}
+
+function poblarFiltroAnyo() {
+  const anyos = [...new Set(facturas.map(f => f.fecha.substring(0,4)))].sort().reverse();
+  const sel = document.getElementById('filtroAnyo');
+  const val = sel ? sel.value : '';
+  if (sel) {
+    sel.innerHTML = '<option value="">Todos los años</option>';
+    anyos.forEach(a => sel.innerHTML += `<option value="${a}" ${a===val?'selected':''}>${a}</option>`);
+  }
+  const selX = document.getElementById('x_anyo');
+  if (selX) {
+    selX.innerHTML = '<option value="">Todos los años</option>';
+    anyos.forEach(a => selX.innerHTML += `<option value="${a}">${a}</option>`);
+  }
+}
+
+function eliminarFactura(id) {
+  const f = facturas.find(x => x.id === id); if (!f) return;
+  const esUltima = numDe(f) === Math.max(...facturas.map(numDe));
+  if (!confirm(esUltima ? `¿Eliminar la factura ${f.num}? No se puede deshacer.` :
+      `¿Eliminar la factura ${f.num}? No se puede deshacer.\n\nOjo: no es la última, así que quedará un hueco en la numeración. Lo podrás corregir con "🔢 Corregir numeración".`)) return;
+  facturas = facturas.filter(x => x.id !== id);
+  cfg.sigNum = siguienteNumInt();
+  guardar();
+  renderTablaFacturas();
+  actualizarUltimaFacWidget();
+}
+
+// ======= MODAL EDITAR =======
+function abrirModalFactura(id) {
+  const f = facturas.find(x => x.id === id);
+  if (!f) return;
+  document.getElementById('modal_fid').value = id;
+  document.getElementById('modalFacturaTitulo').textContent = `✏️ Editar factura ${f.num}`;
+  document.getElementById('modal_fecha').value = f.fecha;
+  document.getElementById('modal_cliente_nombre').value = f.cliente.nombre;
+  document.getElementById('modal_concepto').value = f.concepto;
+  document.getElementById('modal_base').value = f.base;
+  document.getElementById('modal_iva').value = f.pIva;
+  document.getElementById('modal_irpf').value = f.pIrpf;
+  recalcModal();
+  document.getElementById('modalFactura').classList.add('abierto');
+}
+function cerrarModalFactura() {
+  document.getElementById('modalFactura').classList.remove('abierto');
+}
+function recalcModal() {
+  const base = parseFloat(document.getElementById('modal_base').value) || 0;
+  const pIva = parseFloat(document.getElementById('modal_iva').value) || 0;
+  const pIrpf = parseFloat(document.getElementById('modal_irpf').value) || 0;
+  const total = base + base*pIva/100 - base*pIrpf/100;
+  document.getElementById('modal_total_info').textContent =
+    `Base: ${base.toFixed(2)} € | IVA: ${(base*pIva/100).toFixed(2)} € | Retención: ${(base*pIrpf/100).toFixed(2)} € | Total: ${total.toFixed(2)} €`;
+}
+function guardarEdicionFactura() {
+  const id = document.getElementById('modal_fid').value;
+  const idx = facturas.findIndex(x => x.id === id);
+  if (idx === -1) return;
+  const f = facturas[idx];
+  const base = parseFloat(document.getElementById('modal_base').value) || 0;
+  const pIva = parseFloat(document.getElementById('modal_iva').value) || 0;
+  const pIrpf = parseFloat(document.getElementById('modal_irpf').value) || 0;
+  facturas[idx] = {
+    ...f,
+    fecha: document.getElementById('modal_fecha').value,
+    concepto: document.getElementById('modal_concepto').value,
+    base: +base.toFixed(2), pIva, cuotaIva: +(base*pIva/100).toFixed(2),
+    pIrpf, retIrpf: +(base*pIrpf/100).toFixed(2),
+    total: +(base + base*pIva/100 - base*pIrpf/100).toFixed(2),
+    editadaEn: new Date().toISOString(),
+  };
+  guardar();
+  cerrarModalFactura();
+  renderTablaFacturas();
+  actualizarUltimaFacWidget();
+  toast(`✅ Factura ${f.num} editada`);
+}
+function anularFactura() {
+  const id = document.getElementById('modal_fid').value;
+  const f = facturas.find(x => x.id === id);
+  if (!f) return;
+  if (!confirm(`¿Anular la factura ${f.num}?\n\nSe marcará como ANULADA y se emitirá una factura rectificativa en negativo.`)) return;
+  const idx = facturas.findIndex(x => x.id === id);
+  facturas[idx] = { ...f, anulada: true };
+  const numRectInt = siguienteNumInt();
+  const numRect = formatearNum(numRectInt, cfg.formato, new Date().getFullYear());
+  facturas.push({
+    id: Date.now().toString() + '_r', num: numRect, numInt: numRectInt, pago: f.pago,
+    fecha: new Date().toISOString().slice(0,10),
+    clienteId: f.clienteId, cliente: f.cliente,
+    concepto: `FACTURA RECTIFICATIVA DE LA FACTURA Nº ${f.num}`,
+    base: -Math.abs(f.base), pIva: f.pIva, cuotaIva: -Math.abs(f.cuotaIva),
+    pIrpf: f.pIrpf, retIrpf: -Math.abs(f.retIrpf), total: -Math.abs(f.total),
+    esRectificativa: true, rectificaDe: f.num, estado: 'cobrada',
+    creadaEn: new Date().toISOString(),
+  });
+  cfg.sigNum = siguienteNumInt();
+  guardar();
+  cerrarModalFactura();
+  renderTablaFacturas();
+  actualizarUltimaFacWidget();
+  toast(`✅ Factura ${f.num} anulada. Rectificativa ${numRect} emitida.`);
+}
+
+// ======= CLIENTES =======
+function guardarCliente() {
+  const id = document.getElementById('c_id').value || Date.now().toString();
+  const nombre = document.getElementById('c_nombre').value.trim();
+  const nif = document.getElementById('c_nif').value.trim();
+  if (!nombre || !nif) { toast('Nombre y NIF son obligatorios','error'); return; }
+  const c = {
+    id, nombre, nif,
+    dir: document.getElementById('c_dir').value.trim(),
+    email: document.getElementById('c_email').value.trim(),
+    tel: document.getElementById('c_tel').value.trim(),
+    concepto: document.getElementById('c_concepto').value.trim(),
+    importe: document.getElementById('c_importe').value,
+    iva: document.getElementById('c_iva').value,
+    irpf: document.getElementById('c_irpf').value,
+    lote: document.getElementById('c_lote').value,
+    pago: document.getElementById('c_pago').value,
+    iban: document.getElementById('c_iban').value.replace(/\s+/g,'').toUpperCase(),
+    mandato_ref: document.getElementById('c_mandato').value.trim(),
+    mandato_fecha: document.getElementById('c_mandato_fecha').value,
+  };
+  if (c.iban && !ibanValido(c.iban)) { toast('El IBAN no es válido, revísalo','error'); return; }
+  const idx = clientes.findIndex(x => x.id === id);
+  if (idx >= 0) clientes[idx] = { ...clientes[idx], ...c }; else clientes.push(c);
+  guardar();
+  limpiarCliente();
+  renderClientes();
+  toast('✅ Cliente guardado');
+}
+function limpiarCliente() {
+  ['c_id','c_nombre','c_nif','c_dir','c_email','c_tel','c_concepto','c_importe','c_iban','c_mandato','c_mandato_fecha'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('c_iva').value = cfg.iva || '0';
+  document.getElementById('c_irpf').value = cfg.irpf || '0';
+  document.getElementById('c_lote').value = '1';
+  document.getElementById('c_pago').value = 'Efectivo';
+}
+function editarCliente(id) {
+  const c = clientes.find(x => x.id === id);
+  if (!c) return;
+  document.getElementById('c_id').value = c.id;
+  document.getElementById('c_nombre').value = c.nombre;
+  document.getElementById('c_nif').value = c.nif;
+  document.getElementById('c_dir').value = c.dir || '';
+  document.getElementById('c_email').value = c.email || '';
+  document.getElementById('c_tel').value = c.tel || '';
+  document.getElementById('c_concepto').value = c.concepto || '';
+  document.getElementById('c_importe').value = c.importe || '';
+  document.getElementById('c_iva').value = c.iva || '0';
+  document.getElementById('c_irpf').value = c.irpf || '0';
+  document.getElementById('c_lote').value = c.lote !== undefined ? c.lote : '1';
+  document.getElementById('c_pago').value = normPago(c.pago);
+  document.getElementById('c_iban').value = c.iban || '';
+  document.getElementById('c_mandato').value = c.mandato_ref || '';
+  document.getElementById('c_mandato_fecha').value = c.mandato_fecha || '';
+  window.scrollTo(0,0);
+}
+function eliminarCliente(id) {
+  if (!confirm('¿Eliminar este cliente?')) return;
+  clientes = clientes.filter(c => c.id !== id);
+  guardar();
+  renderClientes();
+}
+function renderClientes() {
+  const div = document.getElementById('listaClientes');
+  document.getElementById('contador-clientes').textContent = `${clientes.length} cliente${clientes.length!==1?'s':''}`;
+  if (clientes.length === 0) {
+    div.innerHTML = '<p style="color:var(--text-muted);font-size:0.88rem">Sin clientes guardados.</p>';
+    return;
+  }
+  div.innerHTML = clientes.map(c => {
+    const ini = c.nombre.trim().charAt(0).toUpperCase();
+    return `<div class="cliente-card">
+      <div class="cliente-avatar">${ini}</div>
+      <div class="cliente-info">
+        <div class="cliente-nombre">${c.nombre}</div>
+        <div class="cliente-det">
+          ${c.nif}${c.importe ? ` · ${parseFloat(c.importe).toFixed(2)} € · IVA ${c.iva}%` : ''}
+          ${c.lote === '1' ? ' · <span class="badge badge-green" style="font-size:0.65rem">En lote</span>' : ''} · ${pagoBadge(c.pago)}${normPago(c.pago)==='Domiciliación' && !c.iban ? ' <span class="badge badge-red" style="font-size:0.65rem">Falta IBAN</span>' : ''}
+        </div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button class="btn btn-secondary btn-sm" onclick="editarCliente('${c.id}')">✏️</button>
+        <button class="btn btn-danger btn-sm" onclick="eliminarCliente('${c.id}')">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ======= LOTE =======
+function initLote() {
+  const hoy = new Date();
+  document.getElementById('l_mes').value = String(hoy.getMonth()+1).padStart(2,'0');
+  document.getElementById('l_anyo').value = hoy.getFullYear();
+  document.getElementById('l_fecha').value = hoy.toISOString().split('T')[0];
+  cargarLote();
+}
+function cargarLote() {
+  const mes = document.getElementById('l_mes').value;
+  const anyo = document.getElementById('l_anyo').value;
+  const fecha = document.getElementById('l_fecha').value;
+  const mesNombre = MESES[parseInt(mes)-1];
+  const clientesLote = clientes.filter(c => c.lote === '1');
+  if (clientesLote.length === 0) {
+    document.getElementById('loteTablaWrap').innerHTML =
+      '<div class="alerta alerta-error">No hay clientes marcados para el lote. Ve a Clientes y activa "Incluir en lote mensual".</div>';
+    document.getElementById('loteAcciones').style.display = 'none';
+    return;
+  }
+  let numActual = siguienteNumInt();
+  const rows = clientesLote.map((c,i) => {
+    const numStr = formatearNum(numActual + i, cfg.formato, parseInt(anyo));
+    const conceptoBase = c.concepto
+      ? c.concepto.replace('{MES}', mesNombre).replace('{YYYY}', anyo).replace('{MM}', mes)
+      : `FORMACIÓN. ${mesNombre} ${anyo}`;
+    return { c, numStr, conceptoBase, importe: c.importe || '', iva: c.iva || '0', irpf: c.irpf || '0' };
+  });
+  document.getElementById('loteTablaWrap').innerHTML = `
+    <div class="panel">
+      <div class="alerta alerta-info" style="margin:16px 16px 0">
+        <span id="lote-contador">Se generarán <strong>${clientesLote.length} facturas</strong></span>
+        — Nº ${rows[0].numStr} a ${rows[rows.length-1].numStr}
+      </div>
+      <div class="tabla-wrap" style="margin:16px">
+        <table class="lote-tabla">
+          <thead><tr>
+            <th style="width:36px;text-align:center"><input type="checkbox" id="lote-chk-all" checked onchange="loteToggleAll(this.checked)"></th>
+            <th>Nº Factura</th><th>Cliente</th><th>Concepto</th>
+            <th>Base €</th><th>IVA</th><th>Retención</th><th>Total €</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map((r,i) => {
+              const base = parseFloat(r.importe) || 0;
+              const pIva = parseFloat(r.iva);
+              const pIrpf = parseFloat(r.irpf);
+              const total = base + base*pIva/100 - base*pIrpf/100;
+              return `<tr id="lote-row-${i}">
+                <td style="text-align:center"><input type="checkbox" class="lote-chk" id="lchk_${i}" checked onchange="loteActualizarContador()"></td>
+                <td><strong id="lnum_${i}">${r.numStr}</strong></td>
+                <td>${r.c.nombre}<br><small style="color:var(--text-muted)">${r.c.nif}</small></td>
+                <td><input value="${r.conceptoBase}" id="lc_${i}" style="width:100%"></td>
+                <td><input type="number" value="${base.toFixed(2)}" id="lb_${i}" step="0.01" onchange="recalcLote(${i})" style="width:90px"></td>
+                <td><select id="li_${i}" onchange="recalcLote(${i})">
+                  <option value="0" ${r.iva==='0'?'selected':''}>0%</option>
+                  <option value="4" ${r.iva==='4'?'selected':''}>4%</option>
+                  <option value="10" ${r.iva==='10'?'selected':''}>10%</option>
+                  <option value="21" ${r.iva==='21'?'selected':''}>21%</option>
+                </select></td>
+                <td><select id="lr_${i}" onchange="recalcLote(${i})">
+                  <option value="0" ${r.irpf==='0'?'selected':''}>0%</option>
+                  <option value="7" ${r.irpf==='7'?'selected':''}>7%</option>
+                  <option value="15" ${r.irpf==='15'?'selected':''}>15%</option>
+                  <option value="19" ${r.irpf==='19'?'selected':''}>19%</option>
+                </select></td>
+                <td id="lt_${i}"><strong>${total.toFixed(2)} €</strong></td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+  document.getElementById('loteAcciones').style.display = 'flex';
+  window._loteRows = rows;
+  window._loteNumIni = numActual;
+  window._loteFecha = fecha;
+  window._loteAnyo = anyo;
+}
+function recalcLote(i) {
+  const base = parseFloat(document.getElementById('lb_'+i).value) || 0;
+  const pIva = parseFloat(document.getElementById('li_'+i).value) || 0;
+  const pIrpf = parseFloat(document.getElementById('lr_'+i).value) || 0;
+  const total = base + base*pIva/100 - base*pIrpf/100;
+  document.getElementById('lt_'+i).innerHTML = '<strong>' + total.toFixed(2) + ' €</strong>';
+}
+function loteToggleAll(checked) {
+  document.querySelectorAll('.lote-chk').forEach(chk => chk.checked = checked);
+  loteActualizarContador();
+}
+function loteActualizarContador() {
+  const total = document.querySelectorAll('.lote-chk').length;
+  const sel = document.querySelectorAll('.lote-chk:checked').length;
+  const el = document.getElementById('lote-contador');
+  if (el) el.innerHTML = `Se generarán <strong>${sel} de ${total} facturas</strong>`;
+  const all = document.getElementById('lote-chk-all');
+  if (all) { all.indeterminate = sel > 0 && sel < total; all.checked = sel === total; }
+  let numActual = window._loteNumIni;
+  (window._loteRows || []).forEach((r,i) => {
+    const chk = document.getElementById('lchk_'+i);
+    const numEl = document.getElementById('lnum_'+i);
+    const rowEl = document.getElementById('lote-row-'+i);
+    if (chk && chk.checked) {
+      if (numEl) numEl.textContent = formatearNum(numActual, cfg.formato, parseInt(window._loteAnyo));
+      numActual++;
+      if (rowEl) rowEl.style.opacity = '1';
+    } else {
+      if (numEl) numEl.textContent = '—';
+      if (rowEl) rowEl.style.opacity = '0.4';
+    }
+  });
+}
+function confirmarLote() {
+  const rows = window._loteRows;
+  const fecha = window._loteFecha;
+  const anyo = window._loteAnyo;
+  if (!fecha) { toast('Selecciona la fecha para las facturas','error'); return; }
+  if (facturas.length > 0) {
+    const ultFecha = facturas[facturas.length-1].fecha;
+    if (fecha < ultFecha) {
+      if (!confirm(`⚠️ La fecha ${formatFecha(fecha)} es anterior a la última factura (${formatFecha(ultFecha)}). ¿Continuar?`)) return;
+    }
+  }
+  const seleccionadas = rows.filter((r,i) => {
+    const chk = document.getElementById('lchk_'+i);
+    return chk && chk.checked;
+  });
+  if (seleccionadas.length === 0) { toast('No hay ninguna factura seleccionada','error'); return; }
+  if (!confirm(`¿Confirmas la generación de ${seleccionadas.length} factura${seleccionadas.length>1?'s':''} con fecha de emisión ${formatFecha(fecha)}?`)) return;
+  let numActual = siguienteNumInt();
+  seleccionadas.forEach((r,idx) => {
+    const i = rows.indexOf(r);
+    const base = parseFloat(document.getElementById('lb_'+i).value) || 0;
+    const pIva = parseFloat(document.getElementById('li_'+i).value) || 0;
+    const pIrpf = parseFloat(document.getElementById('lr_'+i).value) || 0;
+    const concepto = document.getElementById('lc_'+i).value;
+    const cuotaIva = +(base * pIva / 100).toFixed(2);
+    const retIrpf = +(base * pIrpf / 100).toFixed(2);
+    const total = +(base + cuotaIva - retIrpf).toFixed(2);
+    const numStr = formatearNum(numActual, cfg.formato, parseInt(anyo));
+    facturas.push({
+      id: Date.now().toString() + idx, num: numStr, numInt: numActual, fecha,
+      clienteId: r.c.id,
+      cliente: { nombre: r.c.nombre, nif: r.c.nif, dir: r.c.dir, email: r.c.email, tel: r.c.tel },
+      concepto, base: +base.toFixed(2), pIva, cuotaIva, pIrpf, retIrpf, total,
+      pago: normPago(r.c.pago), lote: `${anyo}-${String(document.getElementById('l_mes').value)}`,
+      estado: 'pendiente',
+      creadaEn: new Date().toISOString(),
+    });
+    numActual++;
+  });
+  cfg.sigNum = siguienteNumInt();
+  guardar();
+  actualizarUltimaFacWidget();
+  toast(`✅ ${seleccionadas.length} factura${seleccionadas.length>1?'s':''} generada${seleccionadas.length>1?'s':''}`);
+  irSec('facturas');
+}
+
+// ======= EXCEL =======
+function initExcel() {
+  poblarFiltroAnyo();
+  actualizarResumenExport();
+}
+function actualizarResumenExport() {
+  const anyo = (document.getElementById('x_anyo') || {}).value || '';
+  const trim = (document.getElementById('x_trim') || {}).value || '';
+  const lista = filtrarParaExport(anyo, trim);
+  const totalBase = lista.reduce((s,f)=>s+f.base,0);
+  const totalIva = lista.reduce((s,f)=>s+f.cuotaIva,0);
+  const totalRet = lista.reduce((s,f)=>s+f.retIrpf,0);
+  const totalFac = lista.reduce((s,f)=>s+f.total,0);
+  document.getElementById('resumenExport').innerHTML = lista.length === 0
+    ? '<span style="color:var(--text-muted)">Sin facturas con este filtro.</span>'
+    : `<strong>${lista.length} facturas</strong> · Base total: <strong>${totalBase.toFixed(2)} €</strong> · IVA: ${totalIva.toFixed(2)} € · Retenciones: -${totalRet.toFixed(2)} € · Total cobrado: <strong>${totalFac.toFixed(2)} €</strong>`;
+}
+function filtrarParaExport(anyo, trim) {
+  let lista = [...facturas];
+  if (anyo) lista = lista.filter(f => f.fecha.startsWith(anyo));
+  if (trim) {
+    const rangos = {1:['01','02','03'],2:['04','05','06'],3:['07','08','09'],4:['10','11','12']};
+    lista = lista.filter(f => rangos[trim].includes(f.fecha.substring(5,7)));
+  }
+  return lista;
+}
+function exportarExcel() {
+  const anyo = document.getElementById('x_anyo').value;
+  const trim = document.getElementById('x_trim').value;
+  const lista = filtrarParaExport(anyo, trim);
+  if (lista.length === 0) { toast('No hay facturas con este filtro','error'); return; }
+  const data = [
+    ['Nº Factura','Fecha','NIF Cliente','Nombre Cliente','Concepto',
+     'Base Imponible (€)','% IVA','Cuota IVA (€)','% Retención IRPF','Retención IRPF (€)','Total Factura (€)','Forma de cobro','Estado cobro']
+  ];
+  lista.forEach(f => data.push([
+    f.num, formatFecha(f.fecha), f.cliente.nif, f.cliente.nombre, f.concepto,
+    f.base, f.pIva, f.cuotaIva, f.pIrpf, f.retIrpf, f.total, normPago(f.pago),
+    f.estado === 'cobrada' ? 'Cobrada' : 'Pendiente cobro'
+  ]));
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  ws['!cols'] = [14,12,14,24,28,16,8,14,16,16,14,14,14].map(w => ({wch:w}));
+  XLSX.utils.book_append_sheet(wb, ws, 'Ingresos');
+  const sufijo = anyo ? (trim ? `_T${trim}_${anyo}` : `_${anyo}`) : '';
+  XLSX.writeFile(wb, `facturas_ingresos${sufijo}.xlsx`);
+  toast('⬇️ Excel descargado');
+}
+
+// ======= PDF =======
+function formatFecha(iso) {
+  if (!iso) return '';
+  const [y,m,d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+function generarPDF(id) {
+  const f = facturas.find(x => x.id === id);
+  if (!f) return;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const W = 210, mg = 20;
+  const azul = [15, 35, 64];
+  const negro = [30, 30, 30];
+  const gris = [100, 100, 100];
+  if (cfg.logo && cfg.logo.startsWith('data:image')) {
+    try { doc.addImage(cfg.logo, 'JPEG', mg, 14, 50, 18); } catch(e) {}
+  }
+  doc.setFont('helvetica','bold'); doc.setFontSize(14); doc.setTextColor(...azul);
+  doc.text('Nº DE FACTURA: ' + f.num, mg, 42);
+  doc.setDrawColor(...azul); doc.setLineWidth(0.5); doc.line(mg, 44, W-mg, 44);
+  doc.setFont('helvetica','bold'); doc.setFontSize(11); doc.setTextColor(...negro);
+  doc.text('FECHA: ' + formatFecha(f.fecha), mg, 52);
+  let y = 65;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(...negro);
+  doc.text('Razón Social:', mg, y); doc.setFont('helvetica','normal'); doc.text(cfg.nombre || '', mg, y+5); y+=12;
+  doc.setFont('helvetica','bold'); doc.text('NIF', mg, y); doc.setFont('helvetica','normal'); doc.text(cfg.nif || '', mg, y+5); y+=12;
+  doc.setFont('helvetica','bold'); doc.text('Dirección', mg, y); doc.setFont('helvetica','normal');
+  const dirLines = doc.splitTextToSize(cfg.dir || '', 80); doc.text(dirLines, mg, y+5); y += 5 + dirLines.length*5 + 4;
+  if (cfg.email) { doc.setFont('helvetica','bold'); doc.text('Email:', mg, y); doc.setFont('helvetica','normal'); doc.text(cfg.email, mg, y+5); y+=11; }
+  if (cfg.tel) { doc.setFont('helvetica','bold'); doc.text('Teléfono:', mg, y); doc.setFont('helvetica','normal'); doc.text(cfg.tel, mg, y+5); y+=11; }
+  if (cfg.iban) { doc.setFont('helvetica','bold'); doc.text('Cuenta Bancaria de abono:', mg, y); doc.setFont('helvetica','normal'); doc.text(cfg.iban, mg, y+5); }
+  const xR = 110; let yR = 65;
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.text('Estudiante / Cliente:', xR, yR); doc.setFont('helvetica','normal'); doc.text(f.cliente.nombre || '', xR, yR+5); yR+=12;
+  doc.setFont('helvetica','bold'); doc.text('NIF:', xR, yR); doc.setFont('helvetica','normal'); doc.text(f.cliente.nif || '', xR, yR+5); yR+=12;
+  if (f.cliente.dir) { doc.setFont('helvetica','bold'); doc.text('Dirección', xR, yR); doc.setFont('helvetica','normal'); const dL = doc.splitTextToSize(f.cliente.dir, 75); doc.text(dL, xR, yR+5); yR += 5+dL.length*5+4; }
+  if (f.cliente.email) { doc.setFont('helvetica','bold'); doc.text('Email', xR, yR); doc.setFont('helvetica','normal'); doc.text(f.cliente.email, xR, yR+5); yR+=11; }
+  if (f.cliente.tel) { doc.setFont('helvetica','bold'); doc.text('Teléfono', xR, yR); doc.setFont('helvetica','normal'); doc.text(f.cliente.tel, xR, yR+5); }
+  const yTabla = 155;
+  doc.setFillColor(...azul); doc.rect(mg, yTabla, W-2*mg, 8, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(9); doc.setTextColor(255,255,255);
+  doc.text('CONCEPTO:', mg+3, yTabla+5.5);
+  doc.setDrawColor(...azul); doc.setLineWidth(0.3);
+  doc.rect(mg, yTabla+8, W-2*mg, 10);
+  doc.setFont('helvetica','normal'); doc.setTextColor(...negro); doc.text(f.concepto, mg+3, yTabla+14);
+  const yBase = yTabla+18;
+  doc.rect(mg, yBase, W-2*mg-35, 9); doc.rect(W-mg-35, yBase, 35, 9);
+  doc.text('Base Imponible', mg+3, yBase+6); doc.text(f.base.toFixed(2)+' €', W-mg-3, yBase+6, {align:'right'});
+  let yActual = yBase+9;
+  if (f.pIva > 0) {
+    doc.rect(mg, yActual, W-2*mg-35, 9); doc.rect(W-mg-35, yActual, 35, 9);
+    doc.text(`IVA ${f.pIva}%`, mg+3, yActual+6); doc.text(f.cuotaIva.toFixed(2)+' €', W-mg-3, yActual+6, {align:'right'}); yActual+=9;
+  }
+  if (f.pIrpf > 0) {
+    // Con retención: primero el total de la factura (base + IVA) y después lo que se paga
+    const yTF = yActual;
+    doc.rect(mg, yTF, W-2*mg-35, 9); doc.rect(W-mg-35, yTF, 35, 9);
+    doc.setFont('helvetica','bold'); doc.text('Total factura', mg+3, yTF+6); doc.text((f.base + f.cuotaIva).toFixed(2)+' €', W-mg-3, yTF+6, {align:'right'});
+    doc.setFont('helvetica','normal'); yActual += 9;
+  }
+  if (f.pIrpf > 0) {
+    doc.rect(mg, yActual, W-2*mg-35, 9); doc.rect(W-mg-35, yActual, 35, 9);
+    doc.text(`Retención IRPF ${f.pIrpf}%`, mg+3, yActual+6); doc.text('-'+f.retIrpf.toFixed(2)+' €', W-mg-3, yActual+6, {align:'right'}); yActual+=9;
+  }
+  doc.setFillColor(...azul); doc.rect(mg, yActual, W-2*mg-35, 10, 'F'); doc.rect(W-mg-35, yActual, 35, 10, 'F');
+  doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(255,255,255);
+  doc.text(f.pIrpf > 0 ? 'TOTAL A PAGAR*' : 'TOTAL*', mg+3, yActual+7); doc.text(f.total.toFixed(2)+' €', W-mg-3, yActual+7, {align:'right'});
+  const yPie = yActual+24;
+  doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...negro);
+  if (cfg.exencion) doc.text('* ' + cfg.exencion.replace(/^\*\s*/,''), mg, yPie);
+  if (cfg.lopd) {
+    const yLopd = yPie+20;
+    doc.setFont('helvetica','bold'); doc.text('INFORMACIÓN PROTECCIÓN DE DATOS (Reglamento UE 2016/679 y Ley Orgánica 3/2018)', mg, yLopd);
+    doc.setFont('helvetica','normal'); doc.setFontSize(7.5); doc.setTextColor(...gris);
+    const lopdLines = doc.splitTextToSize(cfg.lopd, W-2*mg); doc.text(lopdLines, mg, yLopd+5);
+  }
+  const mesesES = ['ENERO','FEBRERO','MARZO','ABRIL','MAYO','JUNIO','JULIO','AGOSTO','SEPTIEMBRE','OCTUBRE','NOVIEMBRE','DICIEMBRE'];
+  const [fAnyo, fMesIdx] = f.fecha.split('-');
+  const fMesNombre = mesesES[parseInt(fMesIdx,10)-1] || fMesIdx;
+  const clienteNorm = (f.cliente.nombre||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,'').trim().replace(/\s+/g,'_');
+  const numNorm = f.num.replace(/[^A-Z0-9]/gi,'');
+  doc.save(`${fMesNombre}_${fAnyo}_${clienteNorm}_${numNorm}.pdf`);
+}
+
+// ======= CONFIG =======
+function cargarConfigCfg() {
+  document.getElementById('cfg_nombre').value = cfg.nombre || '';
+  document.getElementById('cfg_nif').value = cfg.nif || '';
+  document.getElementById('cfg_dir').value = cfg.dir || '';
+  document.getElementById('cfg_email').value = cfg.email || '';
+  document.getElementById('cfg_tel').value = cfg.tel || '';
+  document.getElementById('cfg_iban').value = cfg.iban || '';
+  document.getElementById('cfg_formato').value = cfg.formato || 'NUM-YYYY';
+  document.getElementById('cfg_iva').value = cfg.iva || '0';
+  document.getElementById('cfg_irpf').value = cfg.irpf || '0';
+  document.getElementById('cfg_signum').value = cfg.sigNum || 1;
+  document.getElementById('cfg_exencion').value = cfg.exencion || '';
+  document.getElementById('cfg_lopd').value = cfg.lopd || '';
+  if (cfg.logo) { const img = document.getElementById('logoPreviewCfg'); img.src = cfg.logo; img.style.display = 'block'; }
+  actualizarPreviewNum();
+}
+function actualizarPreviewNum() {
+  const formato = document.getElementById('cfg_formato').value;
+  const num = parseInt(document.getElementById('cfg_signum').value) || 1;
+  document.getElementById('previewNum').textContent = formatearNum(num, formato, new Date().getFullYear());
+}
+function guardarConfigCfg() {
+  cfg.nombre = document.getElementById('cfg_nombre').value.trim();
+  cfg.nif = document.getElementById('cfg_nif').value.trim();
+  cfg.dir = document.getElementById('cfg_dir').value.trim();
+  cfg.email = document.getElementById('cfg_email').value.trim();
+  cfg.tel = document.getElementById('cfg_tel').value.trim();
+  cfg.iban = document.getElementById('cfg_iban').value.trim();
+  cfg.formato = document.getElementById('cfg_formato').value;
+  cfg.iva = document.getElementById('cfg_iva').value;
+  cfg.irpf = document.getElementById('cfg_irpf').value;
+  cfg.sigNum = parseInt(document.getElementById('cfg_signum').value) || 1;
+  cfg.exencion = document.getElementById('cfg_exencion').value;
+  cfg.lopd = document.getElementById('cfg_lopd').value;
+  guardar();
+  toast('✅ Configuración guardada');
+}
+function borrarTodo() {
+  if (!confirm('¿BORRAR TODOS LOS DATOS? Esta acción es irreversible.')) return;
+  if (!confirm('Segunda confirmación: ¿Estás segura? Se perderán todas las facturas y clientes.')) return;
+  localStorage.removeItem('fac_cfg'); localStorage.removeItem('fac_clientes'); localStorage.removeItem('fac_facturas');
+  location.reload();
+}
+function previewLogo(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { const img = document.getElementById('logoPreview'); img.src = e.target.result; img.style.display = 'block'; };
+  reader.readAsDataURL(file);
+}
+function previewLogoCfg(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => { const img = document.getElementById('logoPreviewCfg'); img.src = e.target.result; img.style.display = 'block'; cfg.logo = e.target.result; };
+  reader.readAsDataURL(file);
+}
+
+// ======= BACKUP =======
+function sincronizarSupabase(datos) {
+  fetch(`${SUPA_URL}/rest/v1/backups`, {
+    method: 'POST',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+    body: JSON.stringify({ cliente: (cfg && cfg.nombre) ? cfg.nombre : 'cliente', datos })
+  }).then(r => { if (!r.ok) console.warn('Supabase backup error:', r.status); })
+    .catch(err => console.warn('Supabase backup sin conexión:', err));
+}
+function hacerCopiaSeguridad(silencioso) {
+  const datos = { version: 1, fecha: new Date().toISOString(), cfg, clientes, facturas };
+  sincronizarSupabase(datos);
+  if (!silencioso) {
+    const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const hoy = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    a.href = url; a.download = `backup_facturas_${hoy}.json`; a.click();
+    URL.revokeObjectURL(url);
+  }
+}
+function restaurarCopia(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const datos = JSON.parse(ev.target.result);
+      if (!datos.cfg || !datos.clientes || !datos.facturas) throw new Error('Formato incorrecto');
+      if (!confirm(`¿Restaurar copia del ${datos.fecha ? datos.fecha.slice(0,10) : '?'}? Se sobreescribirán todos los datos actuales.`)) return;
+      cfg = datos.cfg; clientes = datos.clientes; facturas = datos.facturas;
+      guardar(); location.reload();
+    } catch(err) { toast('El archivo no es una copia válida','error'); }
+  };
+  reader.readAsText(file);
+}
+
+// ======= TAC =======
+function verificarPinTAC() {
+  const inp = document.getElementById('tac_pin_input').value.trim();
+  const pin = localStorage.getItem(TAC_PIN_KEY) || TAC_PIN_DEFAULT;
+  if (inp !== pin) { toast('PIN incorrecto','error'); return; }
+  sessionStorage.setItem(TAC_OK_KEY, '1');
+  document.getElementById('tac_pin_input').value = '';
+  document.getElementById('tac-login-card').style.display = 'none';
+  document.getElementById('tac-visor').style.display = 'block';
+  cargarCopiasTAC();
+}
+async function cargarCopiasTAC() {
+  const lista = document.getElementById('tac-lista');
+  lista.innerHTML = '<p style="color:var(--text-muted)">Cargando copias...</p>';
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/backups?select=id,cliente,fecha,datos&order=fecha.desc&limit=50`, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+    });
+    if (!r.ok) throw new Error('Error '+r.status);
+    const rows = await r.json();
+    if (!rows.length) { lista.innerHTML = '<p style="color:var(--text-muted)">No hay copias guardadas todavía.</p>'; return; }
+    lista.innerHTML = rows.map(row => {
+      const f = row.fecha ? new Date(row.fecha) : null;
+      const fechaStr = f ? f.toLocaleDateString('es-ES') + ' ' + f.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'}) : '—';
+      const datos = row.datos || {};
+      return `<div class="cliente-card" style="margin-bottom:8px">
+        <div style="flex:1">
+          <div class="cliente-nombre">📁 ${row.cliente || '—'}</div>
+          <div class="cliente-det">${fechaStr} · ${datos.facturas ? datos.facturas.length : '—'} facturas · ${datos.clientes ? datos.clientes.length : '—'} clientes</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="descargarCopiaTAC(${row.id})">⬇️</button>
+          <button class="btn btn-danger btn-sm" onclick="borrarCopiaTAC(${row.id})">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    lista.innerHTML = `<p style="color:var(--red)">Error al cargar: ${e.message}</p>`;
+  }
+}
+async function descargarCopiaTAC(id) {
+  const r = await fetch(`${SUPA_URL}/rest/v1/backups?id=eq.${id}&select=cliente,fecha,datos`, {
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+  });
+  const rows = await r.json();
+  if (!rows.length) return;
+  const row = rows[0];
+  const blob = new Blob([JSON.stringify(row.datos, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fecha = row.fecha ? row.fecha.slice(0,10).replace(/-/g,'') : 'backup';
+  a.href = url; a.download = `copia_${row.cliente}_${fecha}.json`; a.click();
+  URL.revokeObjectURL(url);
+}
+async function borrarCopiaTAC(id) {
+  if (!confirm('¿Borrar esta copia? No se puede deshacer.')) return;
+  await fetch(`${SUPA_URL}/rest/v1/backups?id=eq.${id}`, {
+    method: 'DELETE',
+    headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+  });
+  cargarCopiasTAC();
+}
+function tacCambiarPinCliente() {
+  const nuevo = document.getElementById('tac_nuevo_pin_cliente').value.trim();
+  const msg = document.getElementById('tac-pin-msg');
+  if (nuevo.length < 4) { msg.style.color='var(--red)'; msg.textContent='El PIN debe tener al menos 4 caracteres.'; return; }
+  localStorage.setItem(PIN_KEY, nuevo);
+  document.getElementById('tac_nuevo_pin_cliente').value = '';
+  msg.style.color = 'var(--green)';
+  msg.textContent = '✅ PIN del cliente actualizado.';
+}
+function tacBloquearCliente() {
+  if (!confirm('¿Bloquear el acceso de Cristina? No podrá entrar hasta que le asignes un PIN nuevo.')) return;
+  localStorage.setItem(PIN_KEY, '___BLOQUEADO___');
+  sessionStorage.removeItem(PIN_OK_KEY);
+  const msg = document.getElementById('tac-pin-msg');
+  msg.style.color = 'var(--red)';
+  msg.textContent = '🚫 Acceso bloqueado. Asígnale un PIN nuevo para restaurar el acceso.';
+}
+
+// ======= PRECARGA =======
+function precargarDatos() {
+  // Los clientes NO se guardan en el código (es público): se cargan desde un archivo en el dispositivo de Cristina
+  const clientesPrecargados = [];
+  const cfgPrecargada = {
+    nombre:"Cristina Vega Morán", nif:"11074285S",
+    dir:"Avenida Pando, Nº 28. Lugo de Llanera. C.P:33690 Llanera. Asturias",
+    email:"Crisvegamoran@gmail.com", tel:"+34626 73 72 01",
+    iban:"ES66 3059 0073 1822 1471 6223", formato:"NUM-YYYY", sigNum:242,
+    iva:"0", irpf:"0", logo:LOGO_DEFAULT,
+    exencion:"Exención del IVA en actividades de enseñanza (art. 20.Uno.9º y 10º de la Ley 37/1992)",
+    lopd:"INFORMACIÓN PROTECCIÓN DE DATOS (Reglamento UE 2016/679 y Ley Orgánica 3/2018): Cristina Vega Morán CIF: 11074285S Dirección Postal: Centro Empresas Lucum, Calle José Manuel Bobes, 11, bajo, 33690 Lugo de Llanera, Asturias. Teléfono: 984 295582. Correo electrónico: Crisvegamoran@gmail.com. FINALIDAD: Facturación del servicio profesional de formación.",
+  };
+  localStorage.setItem('fac_cfg', JSON.stringify(cfgPrecargada));
+  localStorage.setItem('fac_clientes', JSON.stringify(clientesPrecargados));
+  localStorage.setItem('fac_facturas', JSON.stringify([]));
+}
+
+// ======= INIT =======
+function init() {
+  if (!cfg) return;
+  const lg = document.getElementById('hdrLogo');
+  if (cfg.logo) { lg.src = cfg.logo; lg.style.display = ''; } else lg.style.display = 'none';
+  document.getElementById('hdrSub').textContent = `${cfg.nombre || ''}${cfg.nif ? ' · NIF ' + cfg.nif : ''}`;
+  initFacturas();
+  irSec('inicio');
+  renderClientes();
+  poblarFiltroAnyo();
+  const hoy = new Date();
+  document.getElementById('l_mes').value = String(hoy.getMonth()+1).padStart(2,'0');
+  document.getElementById('l_anyo').value = hoy.getFullYear();
+  document.getElementById('l_fecha').value = hoy.toISOString().split('T')[0];
+}
+
+// ======= ARRANQUE =======
+(function() {
+  const pinOk = sessionStorage.getItem(PIN_OK_KEY);
+  if (pinOk === '1') {
+    arrancarApp();
+  } else {
+    document.getElementById('pinOverlay').style.display = 'flex';
+    setTimeout(() => { const inp = document.getElementById('pin_input'); if(inp) inp.focus(); }, 100);
+  }
+})();
+
+// Listeners
+document.getElementById('x_anyo') && document.getElementById('x_anyo').addEventListener('change', actualizarResumenExport);
+document.getElementById('x_trim') && document.getElementById('x_trim').addEventListener('change', actualizarResumenExport);
+document.getElementById('f_base') && document.getElementById('f_base').addEventListener('input', calcularTotales);
+document.getElementById('cfg_signum') && document.getElementById('cfg_signum').addEventListener('input', actualizarPreviewNum);
+// Enter en PIN setup también funciona
+document.getElementById('pin_input') && document.getElementById('pin_input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') verificarPin();
+});
+</script>
+</body>
+</html>
