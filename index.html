@@ -594,7 +594,12 @@ tr.anulada td, tr.rectificativa td { font-style: italic; }
         <div class="panel">
           <div class="panel-header">
             <h2>Clientes guardados</h2>
-            <span id="contador-clientes" style="font-size:0.8rem;color:var(--text-muted)"></span>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <span id="contador-clientes" style="font-size:0.8rem;color:var(--text-muted)"></span>
+              <label class="btn btn-secondary btn-sm" style="cursor:pointer">📂 Cargar listado de clientes
+                <input type="file" accept=".json,application/json" style="display:none" onchange="importarListadoClientes(event)">
+              </label>
+            </div>
           </div>
           <div class="panel-body" id="listaClientes" style="padding:16px"></div>
         </div>
@@ -1559,6 +1564,38 @@ function editarCliente(id) {
   document.getElementById('c_mandato_fecha').value = c.mandato_fecha || '';
   window.scrollTo(0,0);
 }
+// Sustituye la lista de clientes por la del archivo: entran las nuevas, se actualizan las que ya estaban
+// (se busca por NIF y se conserva su forma de cobro/IBAN) y se borran las que no vienen en el listado.
+function importarListadoClientes(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const d = JSON.parse(ev.target.result);
+      const lista = Array.isArray(d) ? d : d.clientes;
+      if (!Array.isArray(lista) || !lista.length) throw new Error('vacío');
+      const norm = n => String(n||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+      const nuevos = [], actualizados = [];
+      const resultado = lista.map(c => {
+        const ya = clientes.find(x => norm(x.nif) === norm(c.nif));
+        if (!ya) { nuevos.push(c.nombre); return { ...c }; }
+        actualizados.push(c.nombre);
+        return { ...ya, ...c, id: ya.id,
+          dir: (/\b\d{5}\b/.test(c.dir||'') || !ya.dir) ? c.dir : ya.dir,   // si la nueva dirección no trae CP y la antigua sí, se queda la antigua
+          pago: ya.pago || c.pago, iban: ya.iban || c.iban || '', mandato_ref: ya.mandato_ref || '', mandato_fecha: ya.mandato_fecha || '',
+          importe: ya.importe || c.importe, concepto: ya.concepto || c.concepto };
+      });
+      const borrados = clientes.filter(x => !lista.some(c => norm(c.nif) === norm(x.nif))).map(x => x.nombre);
+      if (!confirm(`Listado con ${lista.length} clientes:\n\n• Nuevos: ${nuevos.length}\n• Ya estaban (se actualizan sus datos): ${actualizados.length}\n• Se BORRAN porque no vienen en el listado: ${borrados.length}${borrados.length ? '\n   ' + borrados.join('\n   ') : ''}\n\nLas facturas ya emitidas no se tocan. ¿Continuar?`)) { e.target.value=''; return; }
+      clientes = resultado;
+      guardar(); renderClientes(); poblarSelectClientes();
+      toast(`✅ Listado cargado: ${lista.length} clientes`);
+    } catch(err) { toast('El archivo no es un listado de clientes válido','error'); }
+    e.target.value = '';
+  };
+  reader.readAsText(file);
+}
+
 function eliminarCliente(id) {
   if (!confirm('¿Eliminar este cliente?')) return;
   clientes = clientes.filter(c => c.id !== id);
