@@ -763,6 +763,14 @@ tr.anulada td, tr.rectificativa td { font-style: italic; }
               <button class="btn btn-danger" style="margin-top:12px" onclick="tacBloquearCliente()">🚫 Bloquear acceso</button>
             </div>
           </div>
+          <div class="panel" style="margin-bottom:20px">
+            <div class="panel-header"><h2>Enviar listado de clientes a Cristina</h2></div>
+            <div class="panel-body">
+              <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px">Envía los clientes que ves ahora en este navegador. Cuando Cristina abra su app, su lista quedará igual que esta: entran las nuevas y se quitan las que no estén. Sus facturas no se tocan.</p>
+              <button class="btn btn-primary" onclick="tacEnviarListado()">📤 Enviar mi listado de clientes</button>
+              <div id="tac-listado-msg" style="font-size:0.82rem;margin-top:10px"></div>
+            </div>
+          </div>
           <div class="panel">
             <div class="panel-header">
               <h2>Copias de seguridad en la nube</h2>
@@ -1566,6 +1574,27 @@ function editarCliente(id) {
 }
 // Sustituye la lista de clientes por la del archivo: entran las nuevas, se actualizan las que ya estaban
 // (se busca por NIF y se conserva su forma de cobro/IBAN) y se borran las que no vienen en el listado.
+// Aplica un listado: entran las nuevas, se actualizan las que ya estaban (por NIF, conservando
+// forma de cobro/IBAN) y se borran las que no vienen. Devuelve el resumen.
+function aplicarListadoClientes(lista, preguntar) {
+  const norm = n => String(n||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  const nuevos = [], actualizados = [];
+  const resultado = lista.map(c => {
+    const ya = clientes.find(x => norm(x.nif) === norm(c.nif));
+    if (!ya) { nuevos.push(c.nombre); return { ...c }; }
+    actualizados.push(c.nombre);
+    return { ...ya, ...c, id: ya.id,
+      dir: (/\b\d{5}\b/.test(c.dir||'') || !ya.dir) ? c.dir : ya.dir,
+      pago: ya.pago || c.pago, iban: ya.iban || c.iban || '', mandato_ref: ya.mandato_ref || c.mandato_ref || '', mandato_fecha: ya.mandato_fecha || c.mandato_fecha || '',
+      importe: ya.importe || c.importe, concepto: ya.concepto || c.concepto };
+  });
+  const borrados = clientes.filter(x => !lista.some(c => norm(c.nif) === norm(x.nif))).map(x => x.nombre);
+  if (preguntar && !confirm(`Listado con ${lista.length} clientes:\n\n• Nuevos: ${nuevos.length}\n• Ya estaban (se actualizan sus datos): ${actualizados.length}\n• Se BORRAN porque no vienen en el listado: ${borrados.length}${borrados.length ? '\n   ' + borrados.join('\n   ') : ''}\n\nLas facturas ya emitidas no se tocan. ¿Continuar?`)) return null;
+  clientes = resultado;
+  guardar();
+  if (document.getElementById('listaClientes')) { renderClientes(); poblarSelectClientes(); }
+  return { total: lista.length, nuevos: nuevos.length, actualizados: actualizados.length, borrados: borrados.length };
+}
 function importarListadoClientes(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
@@ -1574,26 +1603,49 @@ function importarListadoClientes(e) {
       const d = JSON.parse(ev.target.result);
       const lista = Array.isArray(d) ? d : d.clientes;
       if (!Array.isArray(lista) || !lista.length) throw new Error('vacío');
-      const norm = n => String(n||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
-      const nuevos = [], actualizados = [];
-      const resultado = lista.map(c => {
-        const ya = clientes.find(x => norm(x.nif) === norm(c.nif));
-        if (!ya) { nuevos.push(c.nombre); return { ...c }; }
-        actualizados.push(c.nombre);
-        return { ...ya, ...c, id: ya.id,
-          dir: (/\b\d{5}\b/.test(c.dir||'') || !ya.dir) ? c.dir : ya.dir,   // si la nueva dirección no trae CP y la antigua sí, se queda la antigua
-          pago: ya.pago || c.pago, iban: ya.iban || c.iban || '', mandato_ref: ya.mandato_ref || '', mandato_fecha: ya.mandato_fecha || '',
-          importe: ya.importe || c.importe, concepto: ya.concepto || c.concepto };
-      });
-      const borrados = clientes.filter(x => !lista.some(c => norm(c.nif) === norm(x.nif))).map(x => x.nombre);
-      if (!confirm(`Listado con ${lista.length} clientes:\n\n• Nuevos: ${nuevos.length}\n• Ya estaban (se actualizan sus datos): ${actualizados.length}\n• Se BORRAN porque no vienen en el listado: ${borrados.length}${borrados.length ? '\n   ' + borrados.join('\n   ') : ''}\n\nLas facturas ya emitidas no se tocan. ¿Continuar?`)) { e.target.value=''; return; }
-      clientes = resultado;
-      guardar(); renderClientes(); poblarSelectClientes();
-      toast(`✅ Listado cargado: ${lista.length} clientes`);
+      const r = aplicarListadoClientes(lista, true);
+      if (r) toast(`✅ Listado cargado: ${r.total} clientes`);
     } catch(err) { toast('El archivo no es un listado de clientes válido','error'); }
     e.target.value = '';
   };
   reader.readAsText(file);
+}
+
+// ===== LISTADO DE CLIENTES ENVIADO POR TAC (nube) =====
+// TAC envía su listado desde la sección TAC; la app de Cristina lo aplica sola al abrirse.
+const LISTADO_TAG = 'LISTADO_CLIENTES';
+async function tacEnviarListado() {
+  if (!clientes.length) { toast('No hay clientes que enviar','error'); return; }
+  if (!confirm(`Se enviarán estos ${clientes.length} clientes a la app de Cristina.\nAl abrirla, su lista de clientes quedará IGUAL que esta (las que no estén se borran).\n¿Enviar?`)) return;
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/backups`, {
+      method: 'POST',
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ cliente: LISTADO_TAG, datos: { clientes, enviado: new Date().toISOString() } })
+    });
+    if (!r.ok) throw new Error('Error ' + r.status);
+    localStorage.setItem('fac_listado_aplicado', 'propio-' + Date.now());
+    const m = document.getElementById('tac-listado-msg');
+    if (m) { m.style.color = 'var(--green)'; m.textContent = `✅ Enviado: ${clientes.length} clientes. Se aplicará cuando Cristina abra la app.`; }
+  } catch(e) { toast('No se pudo enviar: ' + e.message, 'error'); }
+}
+async function comprobarListadoNube() {
+  try {
+    const r = await fetch(`${SUPA_URL}/rest/v1/backups?cliente=eq.${LISTADO_TAG}&select=id,fecha,datos&order=id.desc&limit=1`, {
+      headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}` }
+    });
+    if (!r.ok) return;
+    const rows = await r.json();
+    if (!rows.length) return;
+    const row = rows[0];
+    if (localStorage.getItem('fac_listado_aplicado') === String(row.id)) return;   // ya aplicado
+    const lista = row.datos && row.datos.clientes;
+    if (!Array.isArray(lista) || !lista.length) return;
+    const res = aplicarListadoClientes(lista, false);
+    localStorage.setItem('fac_listado_aplicado', String(row.id));
+    if (res) toast(`👥 Lista de clientes actualizada por TAC: ${res.total} clientes (${res.nuevos} nuevos, ${res.borrados} quitados)`);
+    if (document.body.classList.contains('en-inicio')) renderInicio();
+  } catch(e) { /* sin conexión: se intentará en la próxima apertura */ }
 }
 
 function eliminarCliente(id) {
@@ -2117,6 +2169,7 @@ function init() {
   document.getElementById('hdrSub').textContent = `${cfg.nombre || ''}${cfg.nif ? ' · NIF ' + cfg.nif : ''}`;
   initFacturas();
   irSec('inicio');
+  comprobarListadoNube();
   renderClientes();
   poblarFiltroAnyo();
   const hoy = new Date();
