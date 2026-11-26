@@ -343,11 +343,12 @@ tr.anulada td, tr.rectificativa td { font-style: italic; }
       <div class="field"><label>IBAN</label><input id="s_iban"></div>
       <div class="field"><label>Formato nº factura</label>
         <select id="s_formato">
-          <option value="NUM-YYYY">1-2024</option>
-          <option value="YYYY-NUM">2024-1</option>
-          <option value="YYYY/NUM">2024/1</option>
-          <option value="FYYYYNUM">F2024001</option>
-          <option value="NUM">1</option>
+          <option value="CURSO">Nº_curso (001_2026/27)</option>
+          <option value="NUM-YYYY">Nº-año (242-2026)</option>
+          <option value="YYYY-NUM">Año-nº (2026-242)</option>
+          <option value="YYYY/NUM">Año/nº (2026/242)</option>
+          <option value="FYYYYNUM">F+año+nº (F2026242)</option>
+          <option value="NUM">Solo número (242)</option>
         </select>
       </div>
       <div class="field"><label>Próximo número</label><input id="s_numini" type="number" value="1" min="1"></div>
@@ -681,9 +682,9 @@ tr.anulada td, tr.rectificativa td { font-style: italic; }
             <div class="fg fg-4" style="margin-bottom:16px">
               <div class="field"><label>Formato nº factura</label>
                 <select id="cfg_formato" onchange="actualizarPreviewNum()">
-                  <option value="NUM-YYYY">1-2024</option><option value="YYYY-NUM">2024-1</option>
-                  <option value="YYYY/NUM">2024/1</option><option value="FYYYYNUM">F2024001</option>
-                  <option value="NUM">Solo número</option>
+                  <option value="CURSO">Nº_curso (001_2026/27)</option><option value="NUM-YYYY">Nº-año (242-2026)</option><option value="YYYY-NUM">Año-nº (2026-242)</option>
+                  <option value="YYYY/NUM">Año/nº (2026/242)</option><option value="FYYYYNUM">F+año+nº (F2026242)</option>
+                  <option value="NUM">Solo número (242)</option>
                 </select>
               </div>
               <div class="field"><label>Próximo número</label><input type="number" id="cfg_signum" min="1" oninput="actualizarPreviewNum()"></div>
@@ -1044,7 +1045,7 @@ function actualizarUltimaFacWidget() {
     return;
   }
   // la de número más alto
-  const ult = [...facturas].sort((a,b) => numDe(b) - numDe(a))[0];
+  const ult = [...facturas].sort((a,b) => ordenFact(b,a))[0];
   document.getElementById('uf-num').textContent = ult.num;
   const cli = ult.cliente ? ult.cliente.nombre : '—';
   document.getElementById('uf-info').textContent = `${formatFecha(ult.fecha)} · ${cli} · ${ult.total.toFixed(2)} €`;
@@ -1062,7 +1063,7 @@ function actualizarUltimaFacWidget() {
 
 // ======= INICIO =======
 function renderInicio() {
-  const ult = [...facturas].sort((a,b) => numDe(b) - numDe(a)).slice(0,3);
+  const ult = [...facturas].sort((a,b) => ordenFact(b,a)).slice(0,3);
   document.getElementById('dashUltimas').innerHTML = ult.map(f => `<tr>
     <td style="white-space:nowrap"><strong>${f.num}</strong></td><td>${f.cliente.nombre}</td>
     <td style="white-space:nowrap;color:var(--text-muted)">${formatFecha(f.fecha)}</td>
@@ -1095,7 +1096,7 @@ function openDomiciliaciones() {
 function domFacturas() {
   const mes = document.getElementById('dom_mes').value;
   return facturas.filter(f => normPago(f.pago) === 'Domiciliación' && f.estado !== 'cobrada' && !f.anulada && !f.esRectificativa && (!mes || f.fecha.startsWith(mes)))
-    .sort((a,b) => numDe(a) - numDe(b));
+    .sort(ordenFact);
 }
 function renderDomiciliaciones() {
   let sinIban = 0;
@@ -1131,10 +1132,20 @@ function exportarDomiciliaciones() {
 }
 
 // ======= NUMERACIÓN =======
-function formatearNum(num, formato, anyo) {
-  const y = anyo || new Date().getFullYear();
+// Curso escolar de una fecha: de septiembre a agosto (nov-2026 -> "2026/27")
+function cursoDe(fecha) {
+  const f = fecha || new Date().toISOString().slice(0,10);
+  const y = parseInt(f.slice(0,4)), m = parseInt(f.slice(5,7));
+  const ini = m >= 9 ? y : y - 1;
+  return `${ini}/${String(ini + 1).slice(2)}`;
+}
+// El tercer parámetro puede ser el año o la fecha de la factura (aaaa-mm-dd)
+function formatearNum(num, formato, anyoOFecha) {
+  const esFecha = typeof anyoOFecha === 'string' && anyoOFecha.length >= 7;
+  const y = esFecha ? parseInt(anyoOFecha.slice(0,4)) : (anyoOFecha || new Date().getFullYear());
   const n3 = String(num).padStart(3, '0');
   switch(formato) {
+    case 'CURSO': return `${n3}_${cursoDe(esFecha ? anyoOFecha : null)}`;
     case 'NUM-YYYY': return `${num}-${y}`;
     case 'YYYY-NUM': return `${y}-${num}`;
     case 'YYYY/NUM': return `${y}/${num}`;
@@ -1150,16 +1161,27 @@ function numDe(f) {
   const m = (cfg && (cfg.formato==='YYYY-NUM' || cfg.formato==='YYYY/NUM')) ? t.match(/\d{4}[-\/](\d+)/) : cfg && cfg.formato==='FYYYYNUM' ? t.match(/F\d{4}(\d+)/) : t.match(/^(\d+)/);
   return m ? parseInt(m[1]) : 0;
 }
-// El siguiente número sale de la factura más alta que existe: si borras las últimas, se reutilizan sus números
-function siguienteNumInt() {
-  return facturas.length ? Math.max(...facturas.map(numDe)) + 1 : (cfg.sigNum || 1);
+// Facturas de la misma serie: con formato por curso, solo las del curso de esa fecha
+function serieDe(fecha) {
+  if (cfg.formato !== 'CURSO') return facturas;
+  const suf = '_' + cursoDe(fecha);
+  return facturas.filter(f => String(f.num||'').endsWith(suf));
 }
-function siguienteNumero() {
-  cfg.sigNum = siguienteNumInt();
-  return formatearNum(cfg.sigNum, cfg.formato, new Date().getFullYear());
+// El siguiente número sale de la factura más alta que existe en la serie: si borras las últimas, se reutilizan sus números
+function siguienteNumInt(fecha) {
+  const serie = serieDe(fecha);
+  if (cfg.formato === 'CURSO') return serie.length ? Math.max(...serie.map(numDe)) + 1 : 1;
+  return serie.length ? Math.max(...serie.map(numDe)) + 1 : (cfg.sigNum || 1);
 }
+function siguienteNumero(fecha) {
+  const f = fecha || new Date().toISOString().slice(0,10);
+  cfg.sigNum = siguienteNumInt(f);
+  return formatearNum(cfg.sigNum, cfg.formato, f);
+}
+// Orden de las facturas: por fecha y, a igual fecha, por número
+function ordenFact(a, b) { return (a.fecha||'').localeCompare(b.fecha||'') || (numDe(a) - numDe(b)); }
 function huecosNumeracion() {
-  const nums = facturas.map(numDe).filter(n => n > 0).sort((a,b)=>a-b);
+  const nums = serieDe().map(numDe).filter(n => n > 0).sort((a,b)=>a-b);
   if (!nums.length) return [];
   const set = new Set(nums), h = [];
   for (let n = nums[0]; n <= nums[nums.length-1]; n++) if (!set.has(n)) h.push(n);
@@ -1169,11 +1191,11 @@ function corregirNumeracion() {
   const huecos = huecosNumeracion();
   if (!huecos.length) { toast('La numeración es correlativa ✓'); return; }
   const desde = huecos[0];
-  const mover = facturas.filter(f => numDe(f) > desde).sort((a,b) => numDe(a) - numDe(b));
+  const mover = serieDe().filter(f => numDe(f) > desde).sort((a,b) => numDe(a) - numDe(b));
   const bloqueadas = mover.filter(f => f.estado === 'cobrada');
   if (bloqueadas.length) { alert('No se puede renumerar: hay facturas posteriores al hueco ya cobradas (' + bloqueadas.map(f=>f.num).join(', ') + ').\nRevísalo a mano.'); return; }
   let n = desde; const cambios = [];
-  mover.forEach(f => { const nuevo = formatearNum(n, cfg.formato, parseInt(f.fecha.slice(0,4))); if (nuevo !== f.num) cambios.push([f, nuevo, n]); n++; });
+  mover.forEach(f => { const nuevo = formatearNum(n, cfg.formato, f.fecha); if (nuevo !== f.num) cambios.push([f, nuevo, n]); n++; });
   if (!confirm('Faltan números en la numeración.\n\nSe renumerarán ' + cambios.length + ' facturas pendientes:\n\n' + cambios.map(([f,nv]) => `${f.num} → ${nv}  (${f.cliente.nombre})`).join('\n') + '\n\nHazlo solo si aún NO las has enviado. ¿Continuar?')) return;
   cambios.forEach(([f,nv,ni]) => { f.num = nv; f.numInt = ni; });
   cfg.sigNum = siguienteNumInt();
@@ -1300,14 +1322,14 @@ function guardarFactura() {
     const c = clientes.find(x => x.id === clienteId);
     clienteData = { nombre: c.nombre, nif: c.nif, dir: c.dir, email: c.email, tel: c.tel };
   }
-  const numInt = siguienteNumInt();
+  const numInt = siguienteNumInt(fecha);
   const pIva = parseFloat(document.getElementById('f_iva').value) || 0;
   const pIrpf = parseFloat(document.getElementById('f_irpf').value) || 0;
   const cuotaIva = +(base * pIva / 100).toFixed(2);
   const retIrpf = +(base * pIrpf / 100).toFixed(2);
   const total = +(base + cuotaIva - retIrpf).toFixed(2);
   const fac = {
-    id: Date.now().toString(), num: formatearNum(numInt, cfg.formato, parseInt(fecha.slice(0,4))), numInt, fecha,
+    id: Date.now().toString(), num: formatearNum(numInt, cfg.formato, fecha), numInt, fecha,
     clienteId, cliente: clienteData, concepto,
     base: +base.toFixed(2), pIva, cuotaIva, pIrpf, retIrpf, total,
     pago: document.getElementById('f_pago').value,
@@ -1356,7 +1378,7 @@ function renderTablaFacturas() {
   const hu = huecosNumeracion(), av = document.getElementById('aviso-huecos');
   if (av) { av.style.display = hu.length ? 'block' : 'none';
     document.getElementById('aviso-huecos-txt').textContent = hu.length > 6 ? `faltan ${hu.length} números (del ${hu[0]} al ${hu[hu.length-1]})` : 'faltan los números ' + hu.join(', '); }
-  let lista = [...facturas].sort((a,b) => numDe(b) - numDe(a));
+  let lista = [...facturas].sort((a,b) => ordenFact(b,a));
   if (anyo) lista = lista.filter(f => f.fecha.startsWith(anyo));
   if (mes) lista = lista.filter(f => f.fecha.substring(5,7) === mes);
   if (filtroEst) lista = lista.filter(f => (f.estado || 'pendiente') === filtroEst);
@@ -1428,7 +1450,8 @@ function poblarFiltroAnyo() {
 
 function eliminarFactura(id) {
   const f = facturas.find(x => x.id === id); if (!f) return;
-  const esUltima = numDe(f) === Math.max(...facturas.map(numDe));
+  const serieF = serieDe(f.fecha);
+  const esUltima = !serieF.includes(f) || numDe(f) === Math.max(...serieF.map(numDe));
   if (!confirm(esUltima ? `¿Eliminar la factura ${f.num}? No se puede deshacer.` :
       `¿Eliminar la factura ${f.num}? No se puede deshacer.\n\nOjo: no es la última, así que quedará un hueco en la numeración. Lo podrás corregir con "🔢 Corregir numeración".`)) return;
   facturas = facturas.filter(x => x.id !== id);
@@ -1494,8 +1517,9 @@ function anularFactura() {
   if (!confirm(`¿Anular la factura ${f.num}?\n\nSe marcará como ANULADA y se emitirá una factura rectificativa en negativo.`)) return;
   const idx = facturas.findIndex(x => x.id === id);
   facturas[idx] = { ...f, anulada: true };
-  const numRectInt = siguienteNumInt();
-  const numRect = formatearNum(numRectInt, cfg.formato, new Date().getFullYear());
+  const hoyR = new Date().toISOString().slice(0,10);
+  const numRectInt = siguienteNumInt(hoyR);
+  const numRect = formatearNum(numRectInt, cfg.formato, hoyR);
   facturas.push({
     id: Date.now().toString() + '_r', num: numRect, numInt: numRectInt, pago: f.pago,
     fecha: new Date().toISOString().slice(0,10),
@@ -1701,9 +1725,9 @@ function cargarLote() {
     document.getElementById('loteAcciones').style.display = 'none';
     return;
   }
-  let numActual = siguienteNumInt();
+  let numActual = siguienteNumInt(fecha);
   const rows = clientesLote.map((c,i) => {
-    const numStr = formatearNum(numActual + i, cfg.formato, parseInt(anyo));
+    const numStr = formatearNum(numActual + i, cfg.formato, cfg.formato === 'CURSO' ? fecha : parseInt(anyo));
     const conceptoBase = c.concepto
       ? c.concepto.replace('{MES}', mesNombre).replace('{YYYY}', anyo).replace('{MM}', mes)
       : `FORMACIÓN. ${mesNombre} ${anyo}`;
@@ -1783,7 +1807,7 @@ function loteActualizarContador() {
     const numEl = document.getElementById('lnum_'+i);
     const rowEl = document.getElementById('lote-row-'+i);
     if (chk && chk.checked) {
-      if (numEl) numEl.textContent = formatearNum(numActual, cfg.formato, parseInt(window._loteAnyo));
+      if (numEl) numEl.textContent = formatearNum(numActual, cfg.formato, cfg.formato === 'CURSO' ? window._loteFecha : parseInt(window._loteAnyo));
       numActual++;
       if (rowEl) rowEl.style.opacity = '1';
     } else {
@@ -1809,7 +1833,7 @@ function confirmarLote() {
   });
   if (seleccionadas.length === 0) { toast('No hay ninguna factura seleccionada','error'); return; }
   if (!confirm(`¿Confirmas la generación de ${seleccionadas.length} factura${seleccionadas.length>1?'s':''} con fecha de emisión ${formatFecha(fecha)}?`)) return;
-  let numActual = siguienteNumInt();
+  let numActual = siguienteNumInt(fecha);
   seleccionadas.forEach((r,idx) => {
     const i = rows.indexOf(r);
     const base = parseFloat(document.getElementById('lb_'+i).value) || 0;
@@ -1819,7 +1843,7 @@ function confirmarLote() {
     const cuotaIva = +(base * pIva / 100).toFixed(2);
     const retIrpf = +(base * pIrpf / 100).toFixed(2);
     const total = +(base + cuotaIva - retIrpf).toFixed(2);
-    const numStr = formatearNum(numActual, cfg.formato, parseInt(anyo));
+    const numStr = formatearNum(numActual, cfg.formato, cfg.formato === 'CURSO' ? fecha : parseInt(anyo));
     facturas.push({
       id: Date.now().toString() + idx, num: numStr, numInt: numActual, fecha,
       clienteId: r.c.id,
@@ -1982,7 +2006,7 @@ function cargarConfigCfg() {
   document.getElementById('cfg_formato').value = cfg.formato || 'NUM-YYYY';
   document.getElementById('cfg_iva').value = cfg.iva || '0';
   document.getElementById('cfg_irpf').value = cfg.irpf || '0';
-  document.getElementById('cfg_signum').value = cfg.sigNum || 1;
+  document.getElementById('cfg_signum').value = siguienteNumInt();
   document.getElementById('cfg_exencion').value = cfg.exencion || '';
   document.getElementById('cfg_lopd').value = cfg.lopd || '';
   if (cfg.logo) { const img = document.getElementById('logoPreviewCfg'); img.src = cfg.logo; img.style.display = 'block'; }
@@ -1991,7 +2015,7 @@ function cargarConfigCfg() {
 function actualizarPreviewNum() {
   const formato = document.getElementById('cfg_formato').value;
   const num = parseInt(document.getElementById('cfg_signum').value) || 1;
-  document.getElementById('previewNum').textContent = formatearNum(num, formato, new Date().getFullYear());
+  document.getElementById('previewNum').textContent = formatearNum(formato === 'CURSO' ? siguienteNumInt() : num, formato, new Date().toISOString().slice(0,10));
 }
 function guardarConfigCfg() {
   cfg.nombre = document.getElementById('cfg_nombre').value.trim();
@@ -2156,7 +2180,7 @@ function precargarDatos() {
     nombre:"Cristina Vega Morán", nif:"11074285S",
     dir:"Avenida Pando, Nº 28. Lugo de Llanera. C.P:33690 Llanera. Asturias",
     email:"Crisvegamoran@gmail.com", tel:"+34626 73 72 01",
-    iban:"ES66 3059 0073 1822 1471 6223", formato:"NUM-YYYY", sigNum:242,
+    iban:"ES66 3059 0073 1822 1471 6223", formato:"CURSO", sigNum:1,
     iva:"0", irpf:"0", logo:LOGO_DEFAULT,
     exencion:"Exención del IVA en actividades de enseñanza (art. 20.Uno.9º y 10º de la Ley 37/1992)",
     lopd:"INFORMACIÓN PROTECCIÓN DE DATOS (Reglamento UE 2016/679 y Ley Orgánica 3/2018): Cristina Vega Morán CIF: 11074285S Dirección Postal: Centro Empresas Lucum, Calle José Manuel Bobes, 11, bajo, 33690 Lugo de Llanera, Asturias. Teléfono: 984 295582. Correo electrónico: Crisvegamoran@gmail.com. FINALIDAD: Facturación del servicio profesional de formación.",
@@ -2169,6 +2193,8 @@ function precargarDatos() {
 // ======= INIT =======
 function init() {
   if (!cfg) return;
+  // Desde el curso 2026/27 la numeración es por curso: 001_2026/27, 002_2026/27...
+  if (!cfg.numCursoAplicado) { cfg.formato = 'CURSO'; cfg.numCursoAplicado = true; localStorage.setItem('fac_cfg', JSON.stringify(cfg)); }
   const lg = document.getElementById('hdrLogo');
   if (cfg.logo) { lg.src = cfg.logo; lg.style.display = ''; } else lg.style.display = 'none';
   document.getElementById('hdrSub').textContent = `${cfg.nombre || ''}${cfg.nif ? ' · NIF ' + cfg.nif : ''}`;
