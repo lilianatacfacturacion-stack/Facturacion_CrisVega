@@ -1452,9 +1452,18 @@ function eliminarFactura(id) {
   const f = facturas.find(x => x.id === id); if (!f) return;
   const serieF = serieDe(f.fecha);
   const esUltima = !serieF.includes(f) || numDe(f) === Math.max(...serieF.map(numDe));
+  // Factura que ya tiene copia en la nube y cuya fecha de emisión ya pasó: se considera enviada al cliente
+  const hoy = new Date().toISOString().slice(0,10);
+  if (f.respaldada && hoy > f.fecha) {
+    if (!confirm(`¿Estás seguro de que vas a anular una factura ya enviada al cliente?\n\nFactura ${f.num} · ${f.cliente.nombre} · ${formatFecha(f.fecha)} · ${f.total.toFixed(2)} €`)) return;
+  }
   if (!confirm(esUltima ? `¿Eliminar la factura ${f.num}? No se puede deshacer.` :
       `¿Eliminar la factura ${f.num}? No se puede deshacer.\n\nOjo: no es la última, así que quedará un hueco en la numeración. Lo podrás corregir con "🔢 Corregir numeración".`)) return;
   facturas = facturas.filter(x => x.id !== id);
+  // Registro de facturas borradas (llega a la hoja de TAC)
+  let borradas = []; try { borradas = JSON.parse(localStorage.getItem('fac_borradas')) || []; } catch(e) {}
+  borradas.push({ num: f.num, fecha: f.fecha, cliente: f.cliente, concepto: f.concepto, base: f.base, cuotaIva: f.cuotaIva, retIrpf: f.retIrpf, total: f.total, pago: f.pago, borradaEl: new Date().toISOString(), yaEnviada: !!(f.respaldada && hoy > f.fecha) });
+  localStorage.setItem('fac_borradas', JSON.stringify(borradas));
   cfg.sigNum = siguienteNumInt();
   guardar();
   renderTablaFacturas();
@@ -2058,14 +2067,21 @@ function sincronizarSupabase(datos) {
     method: 'POST',
     headers: { 'apikey': SUPA_KEY, 'Authorization': `Bearer ${SUPA_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
     body: JSON.stringify({ cliente: (cfg && cfg.nombre) ? cfg.nombre : 'cliente', datos })
-  }).then(r => { if (!r.ok) console.warn('Supabase backup error:', r.status); })
-    .catch(err => console.warn('Supabase backup sin conexión:', err));
+  }).then(r => {
+    if (!r.ok) { console.warn('Supabase backup error:', r.status); return; }
+    // Marcar como "con copia en la nube" las facturas que iban en esta copia (sin lanzar otra copia)
+    const ids = new Set((datos.facturas || []).map(f => f.id));
+    let cambio = false;
+    facturas.forEach(f => { if (ids.has(f.id) && !f.respaldada) { f.respaldada = new Date().toISOString(); cambio = true; } });
+    if (cambio) localStorage.setItem('fac_facturas', JSON.stringify(facturas));
+  }).catch(err => console.warn('Supabase backup sin conexión:', err));
 }
 function hacerCopiaSeguridad(silencioso) {
   // Identificador de este dispositivo y si es el de administración (TAC), para que el Excel de TAC use la copia de Cristina
   let disp = localStorage.getItem('fac_dispositivo');
   if (!disp) { disp = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); localStorage.setItem('fac_dispositivo', disp); }
-  const datos = { version: 1, fecha: new Date().toISOString(), dispositivo: disp, admin: localStorage.getItem('fac_es_admin') === '1', cfg, clientes, facturas };
+  let borradas = []; try { borradas = JSON.parse(localStorage.getItem('fac_borradas')) || []; } catch(e) {}
+  const datos = { version: 1, fecha: new Date().toISOString(), dispositivo: disp, admin: localStorage.getItem('fac_es_admin') === '1', cfg, clientes, facturas, borradas };
   sincronizarSupabase(datos);
   if (!silencioso) {
     const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
