@@ -1625,6 +1625,7 @@ async function tacEnviarListado() {
     });
     if (!r.ok) throw new Error('Error ' + r.status);
     localStorage.setItem('fac_listado_aplicado', 'propio-' + Date.now());
+    localStorage.setItem('fac_es_admin', '1');
     const m = document.getElementById('tac-listado-msg');
     if (m) { m.style.color = 'var(--green)'; m.textContent = `✅ Enviado: ${clientes.length} clientes. Se aplicará cuando Cristina abra la app.`; }
   } catch(e) { toast('No se pudo enviar: ' + e.message, 'error'); }
@@ -2037,7 +2038,10 @@ function sincronizarSupabase(datos) {
     .catch(err => console.warn('Supabase backup sin conexión:', err));
 }
 function hacerCopiaSeguridad(silencioso) {
-  const datos = { version: 1, fecha: new Date().toISOString(), cfg, clientes, facturas };
+  // Identificador de este dispositivo y si es el de administración (TAC), para que el Excel de TAC use la copia de Cristina
+  let disp = localStorage.getItem('fac_dispositivo');
+  if (!disp) { disp = 'd' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); localStorage.setItem('fac_dispositivo', disp); }
+  const datos = { version: 1, fecha: new Date().toISOString(), dispositivo: disp, admin: localStorage.getItem('fac_es_admin') === '1', cfg, clientes, facturas };
   sincronizarSupabase(datos);
   if (!silencioso) {
     const blob = new Blob([JSON.stringify(datos, null, 2)], { type: 'application/json' });
@@ -2069,6 +2073,7 @@ function verificarPinTAC() {
   const pin = localStorage.getItem(TAC_PIN_KEY) || TAC_PIN_DEFAULT;
   if (inp !== pin) { toast('PIN incorrecto','error'); return; }
   sessionStorage.setItem(TAC_OK_KEY, '1');
+  localStorage.setItem('fac_es_admin', '1');   // este navegador es el de TAC
   document.getElementById('tac_pin_input').value = '';
   document.getElementById('tac-login-card').style.display = 'none';
   document.getElementById('tac-visor').style.display = 'block';
