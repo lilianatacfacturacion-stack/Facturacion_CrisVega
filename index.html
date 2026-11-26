@@ -2000,8 +2000,8 @@ function generarPDF(id) {
   const [fAnyo, fMesIdx] = f.fecha.split('-');
   const fMesNombre = mesesES[parseInt(fMesIdx,10)-1] || fMesIdx;
   const clienteNorm = (f.cliente.nombre||'').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^A-Z0-9 ]/g,'').trim().replace(/\s+/g,'_');
-  const numNorm = f.num.replace(/[^A-Z0-9]/gi,'');
-  doc.save(`${fMesNombre}_${fAnyo}_${clienteNorm}_${numNorm}.pdf`);
+  const numNorm = f.num.replace(/\//g,'-').replace(/[^A-Z0-9_-]/gi,'');
+  doc.save(`${numNorm}_${fMesNombre}_${fAnyo}_${clienteNorm}.pdf`);
 }
 
 // ======= CONFIG =======
