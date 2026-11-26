@@ -2199,7 +2199,7 @@ function precargarDatos() {
     iban:"ES66 3059 0073 1822 1471 6223", formato:"CURSO", sigNum:1,
     iva:"0", irpf:"0", logo:LOGO_DEFAULT,
     exencion:"Exención del IVA en actividades de enseñanza (art. 20.Uno.9º y 10º de la Ley 37/1992)",
-    lopd:"INFORMACIÓN PROTECCIÓN DE DATOS (Reglamento UE 2016/679 y Ley Orgánica 3/2018): Cristina Vega Morán CIF: 11074285S Dirección Postal: Centro Empresas Lucum, Calle José Manuel Bobes, 11, bajo, 33690 Lugo de Llanera, Asturias. Teléfono: 984 295582. Correo electrónico: Crisvegamoran@gmail.com. FINALIDAD: Facturación del servicio profesional de formación.",
+    lopd:"INFORMACIÓN PROTECCIÓN DE DATOS (Reglamento UE 2016/679 y Ley Orgánica 3/2018): Cristina Vega Morán CIF: 11074285S Dirección Postal: Avenida Pando, Nº 28. Lugo de Llanera. C.P:33690 Llanera. Asturias. Teléfono: 984 295582. Correo electrónico: Crisvegamoran@gmail.com. FINALIDAD: Facturación del servicio profesional de formación.",
   };
   localStorage.setItem('fac_cfg', JSON.stringify(cfgPrecargada));
   localStorage.setItem('fac_clientes', JSON.stringify(clientesPrecargados));
@@ -2209,6 +2209,13 @@ function precargarDatos() {
 // ======= INIT =======
 function init() {
   if (!cfg) return;
+  // Dirección correcta de Cristina (también en la cláusula de protección de datos)
+  if (!cfg.dirCorregida) {
+    const DIR_OK = 'Avenida Pando, Nº 28. Lugo de Llanera. C.P:33690 Llanera. Asturias';
+    cfg.dir = DIR_OK;
+    if (cfg.lopd) cfg.lopd = cfg.lopd.replace(/Centro Empresas Lucum[^.]*?Asturias\.?/i, DIR_OK + '.');
+    cfg.dirCorregida = true; localStorage.setItem('fac_cfg', JSON.stringify(cfg));
+  }
   // Desde el curso 2026/27 la numeración es por curso: 001_2026/27, 002_2026/27...
   if (!cfg.numCursoAplicado) { cfg.formato = 'CURSO'; cfg.numCursoAplicado = true; localStorage.setItem('fac_cfg', JSON.stringify(cfg)); }
   const lg = document.getElementById('hdrLogo');
